@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Daily Goal Tracker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <meta name="theme-color" content="#0a0a0a">
+  <style>
+    button, input, textarea { touch-action: manipulation; }
+  </style>
+</head>
+<body class="bg-neutral-950 text-white min-h-screen">
+  <main class="max-w-md mx-auto px-4 pb-28 pt-6">
+    <header class="mb-4 flex items-center justify-between">
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">Daily Goal Tracker</h1>
+        <p class="text-neutral-400 text-sm mt-1">今日の目標に対する進捗をサクッと管理</p>
+      </div>
+      <div class="text-right">
+        <p id="userView" class="text-xs text-neutral-400">未ログイン</p>
+        <div class="mt-2 flex gap-2 justify-end">
+          <button id="loginBtn" class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-sm">Googleでログイン</button>
+          <button id="logoutBtn" class="px-3 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm hidden">ログアウト</button>
+        </div>
+      </div>
+    </header>
+
+    <!-- 目標設定 -->
+    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <h2 class="font-semibold mb-3">目標金額</h2>
+      <div class="flex gap-2">
+        <input id="goalInput" type="number" inputmode="numeric" min="0" step="100"
+               class="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+               placeholder="例: 10000">
+        <button id="setGoalBtn"
+                class="shrink-0 rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition">
+          設定
+        </button>
+      </div>
+      <p id="goalView" class="text-neutral-300 text-sm mt-2">未設定</p>
+      <p id="saveHint" class="text-[11px] text-neutral-500 mt-1">未ログイン時は端末に保存／ログイン中はクラウドに自動保存</p>
+    </section>
+
+    <!-- 合計表示＆進捗バー -->
+    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <div class="flex items-end justify-between">
+        <div>
+          <p class="text-neutral-400 text-sm">現在の合計</p>
+          <p id="totalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
+        </div>
+        <div class="text-right">
+          <p class="text-neutral-400 text-sm">達成率</p>
+          <p id="percentView" class="text-xl font-bold">0%</p>
+        </div>
+      </div>
+      <div class="mt-3 h-3 w-full bg-neutral-800 rounded-full overflow-hidden">
+        <div id="progressBar" class="h-full bg-emerald-500" style="width:0%"></div>
+      </div>
+      <p id="remainingView" class="text-neutral-300 text-sm mt-2">目標未設定</p>
+    </section>
+
+    <!-- Amazon +137円 カウンター -->
+    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <h2 class="font-semibold mb-3">Amazon（+137円/タップ）</h2>
+      <div class="flex items-center justify-between">
+        <p class="text-neutral-300">配達個数：<span id="amazonCount" class="font-bold">0</span> 回</p>
+        <button id="amazonPlusBtn"
+                class="rounded-lg px-4 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition">
+          +137円
+        </button>
+      </div>
+    </section>
+
+    <!-- フードデリバリー 金額入力 -->
+    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <h2 class="font-semibold mb-3">フードデリバリー（手動入力）</h2>
+      <div class="flex gap-2">
+        <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
+               class="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+               placeholder="金額（円）を入力">
+        <button id="fdAddBtn"
+                class="shrink-0 rounded-lg px-4 py-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 transition">
+          追加
+        </button>
+      </div>
+    </section>
+
+    <!-- リセット -->
+    <section class="p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <h2 class="font-semibold mb-3">1日の締め</h2>
+      <button id="resetBtn"
+              class="w-full rounded-lg px-4 py-3 bg-red-600 hover:bg-red-500 active:bg-red-700 transition">
+        本日のデータをリセット
+      </button>
+      <p id="dateView" class="text-neutral-500 text-xs mt-2"></p>
+    </section>
+  </main>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    // === あなたのFirebase設定 ===
+    const firebaseConfig = {
+      apiKey: "AIzaSyDwt4EL1tLDehbGvluSf3-SNRKfvbzjQaU",
+      authDomain: "daily-goal-tracker-900c0.firebaseapp.com",
+      projectId: "daily-goal-tracker-900c0",
+      storageBucket: "daily-goal-tracker-900c0.firebasestorage.app",
+      messagingSenderId: "1022566470001",
+      appId: "1:1022566470001:web:10c7a2db8d938beb53e6d0"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+    const provider = new GoogleAuthProvider();
+
+    // ===== Local util =====
+    const fmtJPY = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
+    const todayKey = () => {
+      const d = new Date();
+      return `DGT:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    };
+    const dayId = () => todayKey().split(':')[1];
+
+    function loadLocal() {
+      const raw = localStorage.getItem(todayKey());
+      if (!raw) return { goal: 0, total: 0, amazonCount: 0 };
+      try { return JSON.parse(raw); } catch { return { goal: 0, total: 0, amazonCount: 0 }; }
+    }
+    function saveLocal(s) {
+      localStorage.setItem(todayKey(), JSON.stringify(s));
+    }
+
+    async function loadCloud(uid) {
+      const ref = doc(db, "users", uid, "days", dayId());
+      const snap = await getDoc(ref);
+      if (snap.exists()) return snap.data();
+      return { goal: 0, total: 0, amazonCount: 0 };
+    }
+    async function saveCloud(uid, s) {
+      const ref = doc(db, "users", uid, "days", dayId());
+      await setDoc(ref, { ...s, updatedAt: serverTimestamp() }, { merge: true });
+    }
+
+    // ===== State & UI =====
+    let state = loadLocal();
+    let currentUser = null;
+
+    function updateUI() {
+      const { goal, total, amazonCount } = state;
+      document.getElementById('goalView').textContent = goal > 0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
+      document.getElementById('totalView').textContent = fmtJPY.format(total);
+      document.getElementById('amazonCount').textContent = amazonCount;
+      let percent = 0;
+      if (goal > 0) percent = Math.min(100, Math.floor((total / goal) * 100));
+      document.getElementById('percentView').textContent = `${percent}%`;
+      document.getElementById('progressBar').style.width = `${percent}%`;
+      document.getElementById('remainingView').textContent =
+        goal <= 0 ? '目標未設定' :
+        total >= goal ? `達成！ +${fmtJPY.format(total - goal)}（超過）` :
+        `あと ${fmtJPY.format(goal - total)}`;
+      document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
+      if (currentUser) {
+        document.getElementById('userView').textContent = `${currentUser.email}`;
+        document.getElementById('loginBtn').classList.add('hidden');
+        document.getElementById('logoutBtn').classList.remove('hidden');
+      } else {
+        document.getElementById('userView').textContent = '未ログイン';
+        document.getElementById('loginBtn').classList.remove('hidden');
+        document.getElementById('logoutBtn').classList.add('hidden');
+      }
+    }
+
+    async function persist() {
+      if (currentUser) await saveCloud(currentUser.uid, state);
+      else saveLocal(state);
+      updateUI();
+    }
+
+    updateUI();
+
+    // ===== Handlers =====
+    document.getElementById('setGoalBtn').addEventListener('click', async () => {
+      const v = parseInt(document.getElementById('goalInput').value, 10);
+      state.goal = Number.isFinite(v) && v >= 0 ? v : 0;
+      document.getElementById('goalInput').value = '';
+      await persist();
+    });
+
+    const STEP = 137;
+    document.getElementById('amazonPlusBtn').addEventListener('click', async () => {
+      state.total += STEP;
+      state.amazonCount += 1;
+      await persist();
+    });
+
+    document.getElementById('fdAddBtn').addEventListener('click', async () => {
+      const raw = document.getElementById('fdInput').value.trim();
+      const v = Number(raw);
+      if (!Number.isFinite(v) || v <= 0) {
+        alert('0円より大きい数値を入力してください。');
+        return;
+      }
+      state.total += Math.floor(v);
+      document.getElementById('fdInput').value = '';
+      await persist();
+    });
+
+    document.getElementById('fdInput').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('fdAddBtn').click();
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', async () => {
+      if (!confirm('本日のデータをリセットします。')) return;
+      state = { goal: 0, total: 0, amazonCount: 0 };
+      await persist();
+    });
+
+    // ===== Auth =====
+    document.getElementById('loginBtn').addEventListener('click', async () => {
+      await signInWithPopup(auth, provider);
+    });
+    document.getElementById('logoutBtn').addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    onAuthStateChanged(auth, async (user) => {
+      currentUser = user || null;
+      if (currentUser) {
+        const cloud = await loadCloud(currentUser.uid);
+        if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
+          const local = loadLocal();
+          state = local;
+          await saveCloud(currentUser.uid, state);
+        } else {
+          state = cloud;
+        }
+      } else {
+        state = loadLocal();
+      }
+      updateUI();
+    });
+
+    window.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && !currentUser) {
+        state = loadLocal();
+        updateUI();
+      }
+    });
+  </script>
+</body>
+</html>
