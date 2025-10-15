@@ -1,13 +1,19 @@
 /* eslint-disable */
-const functions = require("firebase-functions");
 const admin = require("firebase-admin");
+
+// ★ v2 API を使用
+const { onCall } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
+
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
 admin.initializeApp();
 
-const REGION = "asia-northeast1"; // 東京
-const BUCKET = admin.storage().bucket();   // デフォルト: {projectId}.appspot.com
+// ★ デフォルトオプション（東京）
+setGlobalOptions({ region: "asia-northeast1", timeoutSeconds: 120, memory: "512MiB" });
+
+const BUCKET = admin.storage().bucket();   // {projectId}.appspot.com
 
 // Firestoreから当月データを集計してHTMLを作る
 async function buildMonthlyHtml(uid, monthId) {
@@ -29,7 +35,6 @@ async function buildMonthlyHtml(uid, monthId) {
   });
   rows.sort((a, b) => a.day.localeCompare(b.day));
 
-  // シンプルなHTML（日本語OK、ChromiumでPDF化）
   const style = `
     <style>
       body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 32px; }
@@ -89,49 +94,52 @@ async function buildMonthlyHtml(uid, monthId) {
   return html;
 }
 
-// 署名URLを発行（1時間）
 async function getSignedUrl(file) {
   const [url] = await file.getSignedUrl({
     action: "read",
-    expires: Date.now() + 60 * 60 * 1000,
+    expires: Date.now() + 60 * 60 * 1000, // 1h
   });
   return url;
 }
 
-exports.generateMonthlyPdf = functions
-  .region(REGION)
-  .https.onCall(async (data, context) => {
-    const uid = context.auth?.uid;
-    if (!uid) {
-      throw new functions.https.HttpsError("unauthenticated", "Login required");
-    }
-    const monthId = typeof data?.monthId === "string" ? data.monthId : null;
-    if (!monthId) {
-      throw new functions.https.HttpsError("invalid-argument", "monthId required");
-    }
+// ★ v2 の onCall を使ってエクスポート
+exports.generateMonthlyPdf = onCall(async (request) => {
+  const uid = request.auth?.uid;
+  if (!uid) {
+    throw new Error("unauthenticated");
+  }
+  const monthId = typeof request.data?.monthId === "string" ? request.data.monthId : null;
+  if (!monthId) {
+    throw new Error("invalid-argument: monthId required");
+  }
 
-    // HTML生成
-    const html = await buildMonthlyHtml(uid, monthId);
+  const html = await buildMonthlyHtml(uid, monthId);
 
-    // Puppeteer（無サンドボックス）
-    const executablePath = await chromium.executablePath();
-    const browser = await puppeteer.launch({
-      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
-      defaultViewport: chromium.defaultViewport,
-      executablePath,
-      headless: chromium.headless,
-    });
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: ["domcontentloaded"] });
-    // 日本語フォントはOSに入っているもの＋Noto Sans JP（Googleのコンテナで解決）を想定
-    const pdfBuffer = await page.pdf({ format: "A4", printBackground: true, margin: {top: "20mm", right: "12mm", bottom: "20mm", left: "12mm"} });
-    await browser.close();
-
-    // Storageへ保存
-    const path = `reports/${uid}/${monthId}.pdf`;
-    const file = BUCKET.file(path);
-    await file.save(pdfBuffer, { contentType: "application/pdf", resumable: false, metadata: { cacheControl: "private, max-age=0" }});
-
-    const url = await getSignedUrl(file);
-    return { url, path };
+  // Puppeteer（@sparticuz/chromium）
+  const executablePath = await chromium.executablePath();
+  const browser = await puppeteer.launch({
+    args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
+    defaultViewport: chromium.defaultViewport,
+    executablePath,
+    headless: chromium.headless,
   });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: ["domcontentloaded"] });
+  const pdfBuffer = await page.pdf({
+    format: "A4",
+    printBackground: true,
+    margin: { top: "20mm", right: "12mm", bottom: "20mm", left: "12mm" },
+  });
+  await browser.close();
+
+  const path = `reports/${uid}/${monthId}.pdf`;
+  const file = BUCKET.file(path);
+  await file.save(pdfBuffer, {
+    contentType: "application/pdf",
+    resumable: false,
+    metadata: { cacheControl: "private, max-age=0" },
+  });
+
+  const url = await getSignedUrl(file);
+  return { url, path };
+});
