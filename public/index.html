@@ -5,255 +5,267 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Daily Goal Tracker</title>
 
-  <!-- Tailwind（CDN。MVPのため簡便に） -->
+  <!-- Tailwind（MVP用途） -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <meta name="theme-color" content="#f7f7ff">
-  <style>
-    button, input { touch-action: manipulation; }
-    .chip { transition: box-shadow .15s ease, transform .02s ease; }
-    .chip:active { transform: translateY(1px); }
-    .soft-card { backdrop-filter: saturate(150%) blur(2px); }
-    .tab { border-bottom-width: 2px; }
-    .dropzone { border: 2px dashed rgba(16,185,129,.45); }
-  </style>
 
-  <!-- OCR (Tesseract.js v4 安定版 / 端末内で実行) -->
+  <!-- Noto Sans JP -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;600;700&display=swap" rel="stylesheet">
+
+  <!-- OCR (Tesseract.js v4 安定版 / 端末内実行) -->
   <script src="https://cdn.jsdelivr.net/npm/tesseract.js@v4.0.2/dist/tesseract.min.js"></script>
+
+  <style>
+    :root{
+      --bg: #F8F9FA;
+      --card: #FFFFFF;
+      --text: #2C2C2C;
+      --accent: #2A9D8F;         /* 落ち着いたエメラルド */
+      --warn: #E76F51;           /* 温かいオレンジ */
+      --line: #E0E0E0;           /* 補助線 */
+      --shadow: 0 2px 6px rgba(0,0,0,0.04);
+    }
+    html,body{ background: var(--bg); color: var(--text); font-family: "Noto Sans JP", system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; }
+    /* 余白と行間の再定義 */
+    body{ line-height: 1.6; }
+    .container{ padding-left:24px; padding-right:24px; }
+    .card{ background: var(--card); box-shadow: var(--shadow); border:1px solid var(--line); border-radius: 14px; padding:20px; }
+    .section-gap{ margin-top:32px; }
+    /* フォント階層 */
+    .h1{ font-size:22px; font-weight:700; line-height:1.4; }
+    .h2{ font-size:18px; font-weight:600; line-height:1.5; }
+    .body{ font-size:15px; font-weight:400; line-height:1.6; }
+    .btn-text{ font-size:15px; font-weight:600; line-height:1.4; }
+    /* ボタン */
+    .btn{ border-radius:10px; padding:10px 14px; transition: filter .12s ease, transform .02s ease; }
+    .btn:active{ transform: translateY(1px); }
+    .btn-accent{ background: var(--accent); color:#fff; }
+    .btn-accent:hover{ filter: brightness(1.05); }
+    .btn-ghost{ background:#F1F5F4; color:#0f172a; border:1px solid var(--line); }
+    .btn-warn{ background: var(--warn); color:#fff; }
+    /* 入力 */
+    .input{ width:100%; border:1px solid var(--line); border-radius:10px; background:#fff; padding:10px 12px; }
+    /* プログレス */
+    .progress-outer{ height:10px; background:#EAF3F1; border-radius:999px; overflow:hidden; }
+    .progress-inner{ height:100%; background: var(--accent); width:0%; transition: width .4s ease; }
+    /* 達成アニメーション（0→100% 1.2s） */
+    @keyframes fill100 {
+      from { width: 0%; }
+      to   { width: 100%; }
+    }
+    .achieved{ animation: fill100 1.2s ease forwards; }
+    /* ドロップゾーン */
+    .dropzone{ border: 2px dashed rgba(42,157,143,.45); border-radius: 12px; padding: 24px; text-align:center; background:#fff; }
+    .chip{ border:1px solid var(--line); background:#fff; border-radius:999px; padding:6px 10px; font-size:13px; }
+    .chip:active{ transform: translateY(1px); }
+    .muted{ color:#64748b; }
+    .grid-2{ display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    .grid-3{ display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    .right{ text-align:right; }
+    .accent{ color: var(--accent); font-weight:700; }
+    .warn{ color: var(--warn); font-weight:600; }
+    /* 8pxモジュールグリッド意識の間隔 */
+    .gap-8{ gap:8px; } .gap-16{ gap:16px; } .gap-24{ gap:24px; } .gap-32{ gap:32px; }
+  </style>
 </head>
-<body class="bg-emerald-50 text-neutral-900 min-h-screen">
-  <main class="max-w-md mx-auto px-4 pb-28 pt-6" id="appRoot">
-    <header class="mb-4 flex items-center justify-between">
+
+<body>
+  <main class="container max-w-md mx-auto pb-28 pt-6">
+    <!-- ヘッダー -->
+    <header class="flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold tracking-tight">Daily Goal Tracker</h1>
-        <p class="text-neutral-500 text-sm mt-1">配達員向け・目標進捗トラッカー（クラウド保存）</p>
+        <h1 class="h1">Daily Goal Tracker</h1>
+        <p class="body muted mt-1">配達員向け・目標進捗トラッカー（クラウド保存）</p>
       </div>
       <div class="text-right">
-        <p id="userView" class="text-xs text-neutral-500">未ログイン</p>
-        <div class="mt-2 flex gap-2 justify-end">
-          <button id="loginBtn" class="px-3 py-1 rounded bg-emerald-300 hover:bg-emerald-400 text-sm">Googleでログイン</button>
-          <button id="logoutBtn" class="px-3 py-1 rounded bg-neutral-300 hover:bg-neutral-400 text-sm hidden">ログアウト</button>
+        <p id="userView" class="text-xs muted">未ログイン</p>
+        <div class="mt-2 flex gap-8 justify-end">
+          <button id="loginBtn" class="btn btn-ghost btn-text">Googleでログイン</button>
+          <button id="logoutBtn" class="btn btn-ghost btn-text hidden">ログアウト</button>
         </div>
       </div>
     </header>
 
-    <!-- タブ切替 -->
-    <nav class="mb-3 grid grid-cols-3 gap-2">
-      <button id="tabDay"   class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-emerald-300 font-medium">日次</button>
-      <button id="tabMonth" class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-transparent font-medium">月次</button>
-      <button id="tabOCR"   class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-transparent font-medium">自動読み取り(β)</button>
+    <!-- タブ -->
+    <nav class="section-gap grid grid-cols-3 gap-16">
+      <button id="tabDay"   class="card h2 text-center py-2" style="padding:10px">日次</button>
+      <button id="tabMonth" class="card h2 text-center py-2" style="padding:10px">月次</button>
+      <button id="tabOCR"   class="card h2 text-center py-2" style="padding:10px">自動読み取り(β)</button>
     </nav>
 
     <!-- ===== 日次ビュー ===== -->
-    <section id="dayView" class="space-y-6">
+    <section id="dayView" class="section-gap">
       <!-- 今日の目標 -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
-        <h2 class="font-semibold mb-3">今日の目標金額</h2>
-        <div class="flex gap-2">
-          <input id="goalInput" type="number" inputmode="numeric" min="0" step="100"
-                 class="w-full rounded-lg bg-white border border-emerald-200 px-3 py-2"
-                 placeholder="例: 10000">
-          <button id="setGoalBtn"
-                  class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
-            設定
-          </button>
+      <section class="card">
+        <h2 class="h2 mb-3">今日の目標金額</h2>
+        <div class="grid-2">
+          <input id="goalInput" type="number" inputmode="numeric" min="0" step="100" class="input" placeholder="例: 10000" />
+          <button id="setGoalBtn" class="btn btn-accent btn-text">設定</button>
         </div>
-        <p id="goalView" class="text-neutral-600 text-sm mt-2">未設定</p>
-        <p class="text-[11px] text-neutral-400 mt-1">未ログイン=端末保存／ログイン中=クラウド保存</p>
+        <p id="goalView" class="body muted mt-2">未設定</p>
+        <p class="text-[11px] muted mt-1">未ログイン=端末保存／ログイン中=クラウド保存</p>
       </section>
 
-      <!-- 合計表示＆進捗バー -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
+      <!-- 合計・達成率 -->
+      <section class="card section-gap">
         <div class="flex items-end justify-between">
-          <div>
-            <p class="text-neutral-500 text-sm">現在の合計</p>
-            <p id="totalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
+          <div class="w-full text-center">
+            <p class="muted body">現在の合計</p>
+            <p id="totalView" class="font-bold" style="font-size:36px; line-height:1.2;">¥0</p>
           </div>
-          <div class="text-right">
-            <p class="text-neutral-500 text-sm">達成率</p>
-            <p id="percentView" class="text-xl font-bold">0%</p>
+          <div class="right" style="min-width:92px;">
+            <p class="muted body">達成率</p>
+            <p id="percentView" class="h2">0%</p>
           </div>
         </div>
-        <div class="mt-3 h-3 w-full bg-emerald-100 rounded-full overflow-hidden">
-          <div id="progressBar" class="h-full bg-emerald-300" style="width:0%"></div>
+        <div class="progress-outer mt-3">
+          <div id="progressBar" class="progress-inner"></div>
         </div>
-        <p id="remainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
+        <p id="remainingView" class="body mt-2">目標未設定</p>
       </section>
 
-      <!-- クイック加算（配達員） -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
+      <!-- クイック加算 -->
+      <section class="card section-gap">
         <div class="flex items-center justify-between mb-3">
-          <h2 class="font-semibold">クイック加算</h2>
-          <p class="text-neutral-700 text-sm">配達個数：<span id="quickCount" class="font-bold">0</span></p>
+          <h2 class="h2">クイック加算</h2>
+          <p class="body">配達個数：<span id="quickCount" class="font-bold">0</span></p>
         </div>
 
-        <!-- 個数チップ & 任意個数 -->
-        <div class="mb-3">
-          <div class="flex items-center justify-between">
-            <div class="flex flex-wrap gap-2">
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="2">×2</button>
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="5">×5</button>
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="10">×10</button>
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="20">×20</button>
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="50">×50</button>
-              <button class="qty chip px-3 py-1.5 rounded-full border border-emerald-200 bg-emerald-50 text-sm" data-q="100">×100</button>
-            </div>
-            <div class="flex items-center gap-2">
-              <input id="qtyInput" type="number" min="1" max="100" value="1"
-                     class="w-20 rounded bg-white border border-emerald-200 px-2 py-1 text-right" />
-              <span class="text-sm text-neutral-500">個</span>
-            </div>
+        <div class="flex items-center justify-between gap-8 mb-2">
+          <div class="flex flex-wrap gap-8">
+            <button class="chip" data-q="2">×2</button>
+            <button class="chip" data-q="5">×5</button>
+            <button class="chip" data-q="10">×10</button>
+            <button class="chip" data-q="20">×20</button>
+            <button class="chip" data-q="50">×50</button>
+            <button class="chip" data-q="100">×100</button>
           </div>
-          <p class="text-[11px] text-neutral-400 mt-1">既定=1。チップで個数欄に反映。</p>
+          <div class="flex items-center gap-8">
+            <input id="qtyInput" type="number" min="1" max="100" value="1" class="input" style="width:90px;"/>
+            <span class="text-sm muted">個</span>
+          </div>
         </div>
+        <p class="text-[11px] muted mb-2">既定=1。チップで個数欄に反映。</p>
 
-        <!-- 金額プリセット -->
-        <div id="quickBtns" class="grid grid-cols-3 gap-2"></div>
+        <!-- プリセット -->
+        <div id="quickBtns" class="grid-3"></div>
       </section>
 
       <!-- 手動入力 -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
-        <h2 class="font-semibold mb-3">手動入力</h2>
-        <div class="flex gap-2">
-          <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
-                 class="w-full rounded-lg bg-white border border-emerald-200 px-3 py-2"
-                 placeholder="金額（円）を入力">
-          <button id="fdAddBtn"
-                  class="shrink-0 rounded-lg px-4 py-2 bg-sky-300 hover:bg-sky-400 active:bg-sky-500 transition">
-            追加
-          </button>
+      <section class="card section-gap">
+        <h2 class="h2 mb-3">手動入力</h2>
+        <div class="grid-2">
+          <input id="fdInput" type="number" inputmode="decimal" min="0" step="1" class="input" placeholder="金額（円）を入力" />
+          <button id="fdAddBtn" class="btn btn-ghost btn-text">追加</button>
         </div>
       </section>
 
-      <!-- リセット（日次のみ。月合計は変えない） -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
-        <h2 class="font-semibold mb-3">1日の締め</h2>
-        <button id="resetBtn"
-                class="w-full rounded-lg px-4 py-3 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition">
-          本日のデータをリセット
-        </button>
-        <p id="dateView" class="text-neutral-500 text-xs mt-2"></p>
+      <!-- リセット -->
+      <section class="card section-gap">
+        <h2 class="h2 mb-3">1日の締め</h2>
+        <button id="resetBtn" class="btn btn-warn btn-text w-full">本日のデータをリセット</button>
+        <p id="dateView" class="text-xs muted mt-2"></p>
       </section>
     </section>
 
     <!-- ===== 月次ビュー ===== -->
-    <section id="monthView" class="space-y-6 hidden">
-      <!-- 今月の目標 -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
-        <h2 class="font-semibold mb-3">今月の目標金額</h2>
-        <div class="flex gap-2">
-          <input id="monthGoalInput" type="number" inputmode="numeric" min="0" step="1000"
-                 class="w-full rounded-lg bg-white border border-emerald-200 px-3 py-2"
-                 placeholder="例: 300000">
-          <button id="setMonthGoalBtn"
-                  class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
-            設定
-          </button>
+    <section id="monthView" class="section-gap hidden">
+      <section class="card">
+        <h2 class="h2 mb-3">今月の目標金額</h2>
+        <div class="grid-2">
+          <input id="monthGoalInput" type="number" inputmode="numeric" min="0" step="1000" class="input" placeholder="例: 300000" />
+          <button id="setMonthGoalBtn" class="btn btn-accent btn-text">設定</button>
         </div>
-        <p id="monthGoalView" class="text-neutral-600 text-sm mt-2">未設定</p>
+        <p id="monthGoalView" class="body muted mt-2">未設定</p>
       </section>
 
-      <!-- 月合計＆進捗＋出力 -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
+      <section class="card section-gap">
         <div class="flex items-end justify-between">
-          <div>
-            <p class="text-neutral-500 text-sm">今月の合計</p>
-            <p id="monthTotalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
+          <div class="w-full text-center">
+            <p class="muted body">今月の合計</p>
+            <p id="monthTotalView" class="font-bold" style="font-size:36px; line-height:1.2;">¥0</p>
           </div>
-          <div class="text-right">
-            <p class="text-neutral-500 text-sm">達成率</p>
-            <p id="monthPercentView" class="text-xl font-bold">0%</p>
+          <div class="right" style="min-width:92px;">
+            <p class="muted body">達成率</p>
+            <p id="monthPercentView" class="h2">0%</p>
           </div>
         </div>
-        <div class="mt-3 h-3 w-full bg-emerald-100 rounded-full overflow-hidden">
-          <div id="monthProgressBar" class="h-full bg-emerald-300" style="width:0%"></div>
+        <div class="progress-outer mt-3">
+          <div id="monthProgressBar" class="progress-inner"></div>
         </div>
-        <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
-        <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
+        <p id="monthRemainingView" class="body mt-2">目標未設定</p>
+        <p id="monthLabel" class="text-xs muted mt-1"></p>
 
-        <div class="mt-3 grid grid-cols-2 gap-2">
-          <button id="exportCsvBtn"
-                  class="rounded-lg px-3 py-2 bg-amber-300 hover:bg-amber-400 active:bg-amber-500 transition text-sm">
-            CSV出力
-          </button>
-          <button id="exportPdfCloudBtn"
-                  class="rounded-lg px-3 py-2 bg-indigo-300 hover:bg-indigo-400 active:bg-indigo-500 transition text-sm">
-            PDF出力
-          </button>
+        <div class="grid-2 mt-3">
+          <button id="exportCsvBtn" class="btn btn-ghost btn-text">CSV出力</button>
+          <button id="exportPdfCloudBtn" class="btn btn-accent btn-text">PDF出力</button>
         </div>
       </section>
 
-      <!-- 今月の履歴（日別）＋ リセット -->
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
+      <section class="card section-gap">
         <div class="flex items-center justify-between mb-2">
-          <h2 class="font-semibold">今月の履歴</h2>
-          <button id="resetMonthBtn"
-                  class="rounded-lg px-3 py-2 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition text-sm">
-            今月の合計をリセット（目標は残す）
-          </button>
+          <h2 class="h2">今月の履歴</h2>
+          <button id="resetMonthBtn" class="btn btn-warn btn-text">今月の合計をリセット</button>
         </div>
-        <ul id="monthHistory" class="divide-y divide-emerald-100"></ul>
-        <p id="historyEmpty" class="text-neutral-400 text-sm mt-2 hidden">今月の履歴がありません。</p>
+        <ul id="monthHistory" class="divide-y" style="border-color:var(--line)"></ul>
+        <p id="historyEmpty" class="muted body mt-2 hidden">今月の履歴がありません。</p>
       </section>
     </section>
 
     <!-- ===== 自動読み取り(β) ===== -->
-    <section id="ocrView" class="space-y-4 hidden">
-      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
-        <h2 class="font-semibold mb-2">スクショ／レシートから自動読み取り</h2>
+    <section id="ocrView" class="section-gap hidden">
+      <section class="card">
+        <h2 class="h2 mb-2">スクショ／レシートから自動読み取り</h2>
 
-        <!-- ルール（無料3件まで） -->
-        <div class="mb-3">
-          <details class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
-            <summary class="cursor-pointer text-sm font-medium">自動分類ルール（無料は3件まで）</summary>
-            <div class="mt-2 space-y-2">
-              <div class="flex gap-2">
-                <input id="ruleKeyword" class="flex-1 border border-emerald-200 rounded px-2 py-1" placeholder="キーワード（例: Uber, ガソリン）">
-                <select id="ruleType" class="border border-emerald-200 rounded px-2 py-1">
+        <details class="rounded-lg" style="border:1px solid var(--line); background:#fff; padding:10px 12px;">
+          <summary class="cursor-pointer body" style="font-weight:600;">自動分類ルール（無料は3件まで）</summary>
+          <div class="mt-2 gap-8">
+            <div class="grid-2">
+              <input id="ruleKeyword" class="input" placeholder="キーワード（例: Uber, ガソリン）">
+              <div class="grid-2">
+                <select id="ruleType" class="input">
                   <option value="income">売上</option>
                   <option value="expense">経費</option>
                 </select>
-                <button id="addRuleBtn" class="bg-emerald-300 hover:bg-emerald-400 px-3 rounded">追加</button>
+                <button id="addRuleBtn" class="btn btn-accent btn-text">追加</button>
               </div>
-              <ul id="ruleList" class="text-sm"></ul>
             </div>
-          </details>
-        </div>
+            <ul id="ruleList" class="body mt-2"></ul>
+          </div>
+        </details>
 
-        <!-- ドロップゾーン -->
-        <div id="dropzone"
-             class="dropzone rounded-lg bg-white px-4 py-6 text-center text-neutral-600">
+        <div id="dropzone" class="dropzone section-gap">
           画像をドラッグ＆ドロップ、または
-          <label class="text-emerald-600 underline cursor-pointer">
+          <label class="underline cursor-pointer accent">
             ファイルを選択<input id="imgInput" type="file" accept="image/*" class="hidden">
           </label>
-          <div class="text-xs text-neutral-400 mt-1">対応: スクショ・レシート（日本語/英語）</div>
+          <div class="text-xs muted mt-1">対応: スクショ・レシート（日本語/英語）</div>
         </div>
 
-        <!-- 進捗 -->
-        <div id="ocrStatus" class="text-sm text-neutral-500 mt-2 hidden">認識中…</div>
+        <div id="ocrStatus" class="body muted mt-2 hidden">認識中…</div>
 
-        <!-- 結果一覧 -->
         <div id="ocrResultsWrap" class="hidden mt-3">
-          <h3 class="font-medium mb-2">検出結果（確認して「反映する」を押す）</h3>
+          <h3 class="h2 mb-2">検出結果（確認して「反映する」を押す）</h3>
           <ul id="ocrResults" class="space-y-2"></ul>
-          <div class="mt-3 flex gap-2">
-            <button id="applyIncomeBtn" class="flex-1 rounded-lg px-3 py-2 bg-emerald-300 hover:bg-emerald-400">売上に反映</button>
-            <button id="clearResultsBtn" class="rounded-lg px-3 py-2 bg-neutral-300 hover:bg-neutral-400">クリア</button>
+          <div class="grid-2 mt-3">
+            <button id="applyIncomeBtn" class="btn btn-accent btn-text">売上に反映</button>
+            <button id="clearResultsBtn" class="btn btn-ghost btn-text">クリア</button>
           </div>
-          <p class="text-xs text-neutral-400 mt-1">※ 経費は将来の確定申告モジュールで活用（今は売上のみ加算）</p>
+          <p class="text-xs muted mt-1">※ 経費は将来の確定申告モジュールで活用（今は売上のみ加算）</p>
         </div>
       </section>
     </section>
   </main>
 
-  <!-- Firebase（v11系） & Functions -->
+  <!-- Firebase SDKs -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, getDocs, increment, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 
-    // === Firebase設定（storageBucketは appspot.com。今回は未使用） ===
+    // === Firebase設定 ===
     const firebaseConfig = {
       apiKey: "AIzaSyDwt4EL1tLDehbGvluSf3-SNRKfvbzjQaU",
       authDomain: "daily-goal-tracker-900c0.firebaseapp.com",
@@ -268,8 +280,8 @@
     const db = getFirestore(app);
     const functions = getFunctions(app, "asia-northeast1");
 
-    // ===== Util =====
-    const fmtJPY = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
+    // ===== Utils =====
+    const fmtJPY = new Intl.NumberFormat('ja-JP',{style:'currency',currency:'JPY',maximumFractionDigits:0});
     const todayKey = () => {
       const d = new Date();
       return `DGT:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -281,570 +293,423 @@
     const dayId = () => todayKey().split(':')[1];
 
     // ===== Local（日）=====
-    function loadLocal() {
-      const raw = localStorage.getItem(todayKey());
-      if (!raw) return { goal: 0, total: 0, amazonCount: 0 };
-      try { return JSON.parse(raw); } catch { return { goal: 0, total: 0, amazonCount: 0 }; }
-    }
-    function saveLocal(s) { localStorage.setItem(todayKey(), JSON.stringify(s)); }
-
+    function loadLocal(){ try{ return JSON.parse(localStorage.getItem(todayKey())||'{}'); }catch{return {};}}
+    function saveLocal(s){ localStorage.setItem(todayKey(), JSON.stringify(s)); }
     // ===== Local（月）=====
     const localMonthKey = () => `DGT:MONTH:${monthId()}`;
-    function loadLocalMonth() {
-      const raw = localStorage.getItem(localMonthKey());
-      if (!raw) return { monthGoal: 0, monthTotal: 0 };
-      try { return JSON.parse(raw); } catch { return { monthGoal: 0, monthTotal: 0 }; }
-    }
-    function saveLocalMonth(m) { localStorage.setItem(localMonthKey(), JSON.stringify(m)); }
-
+    function loadLocalMonth(){ try{ return JSON.parse(localStorage.getItem(localMonthKey())||'{}'); }catch{return {};}}
+    function saveLocalMonth(m){ localStorage.setItem(localMonthKey(), JSON.stringify(m)); }
     // ===== Local（ルール）=====
-    function loadRules() {
-      const raw = localStorage.getItem("DGT:rules");
-      if (!raw) return [];
-      try { return JSON.parse(raw); } catch { return []; }
-    }
-    function saveRules(rules) { localStorage.setItem("DGT:rules", JSON.stringify(rules)); }
+    function loadRules(){ try{ return JSON.parse(localStorage.getItem("DGT:rules")||'[]'); }catch{return [];}}
+    function saveRules(rules){ localStorage.setItem("DGT:rules", JSON.stringify(rules)); }
 
     // ===== Firestore（日）=====
-    async function loadCloud(uid) {
-      const ref = doc(db, "users", uid, "days", dayId());
-      const snap = await getDoc(ref);
-      if (snap.exists()) return snap.data();
-      return { goal: 0, total: 0, amazonCount: 0 };
+    async function loadCloud(uid){
+      const snap = await getDoc(doc(db,"users",uid,"days",dayId()));
+      return snap.exists()? snap.data() : {goal:0,total:0,amazonCount:0};
     }
-    async function saveCloud(uid, s) {
-      const ref = doc(db, "users", uid, "days", dayId());
-      await setDoc(ref, { ...s, date: dayId(), updatedAt: serverTimestamp() }, { merge: true });
+    async function saveCloud(uid,s){
+      await setDoc(doc(db,"users",uid,"days",dayId()), {...s,date:dayId(),updatedAt:serverTimestamp()},{merge:true});
     }
 
     // ===== Firestore（月）=====
-    async function sumMonthDays(uid) {
-      const daysRef = collection(db, "users", uid, "days");
-      const all = await getDocs(daysRef);
-      let sum = 0;
-      all.forEach(d => { if (d.id.startsWith(monthId())) sum += (d.data().total ?? 0); });
+    async function sumMonthDays(uid){
+      const snaps = await getDocs(collection(db,"users",uid,"days"));
+      let sum = 0; snaps.forEach(d=>{ if(d.id.startsWith(monthId())) sum += (d.data().total||0); });
       return sum;
     }
-    async function loadMonth(uid) {
-      const ref = doc(db, "users", uid, "months", monthId());
+    async function loadMonth(uid){
+      const ref = doc(db,"users",uid,"months",monthId());
       const snap = await getDoc(ref);
       if (snap.exists()) return snap.data();
-      const sum = uid ? await sumMonthDays(uid) : loadLocalMonth().monthTotal;
-      const init = { monthGoal: 0, monthTotal: sum, updatedAt: serverTimestamp() };
-      await setDoc(ref, init, { merge: true });
-      return { monthGoal: 0, monthTotal: sum };
+      const sum = uid ? await sumMonthDays(uid) : (loadLocalMonth().monthTotal||0);
+      const init = { monthGoal:0, monthTotal:sum, updatedAt:serverTimestamp() };
+      await setDoc(ref, init, { merge:true });
+      return init;
     }
-    async function saveMonthGoal(uid, v) {
-      const ref = doc(db, "users", uid, "months", monthId());
-      await setDoc(ref, { monthGoal: v, updatedAt: serverTimestamp() }, { merge: true });
+    async function saveMonthGoal(uid,v){
+      await setDoc(doc(db,"users",uid,"months",monthId()), {monthGoal:v,updatedAt:serverTimestamp()},{merge:true});
     }
-    async function incMonthTotal(uid, delta) {
+    async function incMonthTotal(uid,delta){
       if (!delta) return;
-      const ref = doc(db, "users", uid, "months", monthId());
-      await setDoc(ref, { monthTotal: increment(delta), updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db,"users",uid,"months",monthId()), {monthTotal:increment(delta),updatedAt:serverTimestamp()},{merge:true});
     }
-    async function recomputeMonthFromDays(uid) {
+    async function recomputeMonthFromDays(uid){
       if (!uid) return;
       const sum = await sumMonthDays(uid);
-      const ref = doc(db, "users", uid, "months", monthId());
-      await setDoc(ref, { monthTotal: sum, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db,"users",uid,"months",monthId()), {monthTotal:sum,updatedAt:serverTimestamp()},{merge:true});
       monthState.monthTotal = sum;
     }
-
-    async function loadMonthHistory(uid) {
-      if (!uid) {
+    async function loadMonthHistory(uid){
+      if (!uid){
         const list = [];
-        for (let i = 1; i <= 31; i++) {
-          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
-          const raw = localStorage.getItem(`DGT:${d}`);
-          if (raw) { try {
-            const o = JSON.parse(raw);
-            list.push({ day: d, total: o.total ?? 0 });
-          } catch {} }
+        for(let i=1;i<=31;i++){
+          const d=`${monthId()}-${String(i).padStart(2,'0')}`, raw=localStorage.getItem(`DGT:${d}`);
+          if (raw){ try{ const o=JSON.parse(raw); list.push({day:d,total:o.total||0}); }catch{} }
         }
-        return list.sort((a,b) => b.day.localeCompare(a.day));
+        return list.sort((a,b)=>b.day.localeCompare(a.day));
       }
-      const daysRef = collection(db, "users", uid, "days");
-      const all = await getDocs(daysRef);
-      const list = [];
-      all.forEach(s => { if (s.id.startsWith(monthId())) list.push({ day: s.id, total: s.data().total ?? 0 }); });
-      return list.sort((a,b) => b.day.localeCompare(a.day));
+      const snaps = await getDocs(collection(db,"users",uid,"days"));
+      const list = []; snaps.forEach(s=>{ if(s.id.startsWith(monthId())) list.push({day:s.id,total:s.data().total||0}); });
+      return list.sort((a,b)=>b.day.localeCompare(a.day));
     }
-
-    async function resetMonthData(uid) {
-      if (uid) {
-        const daysRef = collection(db, "users", uid, "days");
-        const all = await getDocs(daysRef);
+    async function resetMonthData(uid){
+      if (uid){
+        const snaps = await getDocs(collection(db,"users",uid,"days"));
         const batch = writeBatch(db);
-        all.forEach(s => {
-          if (s.id.startsWith(monthId())) {
-            batch.set(doc(db, "users", uid, "days", s.id), { total: 0, amazonCount: 0, updatedAt: serverTimestamp() }, { merge: true });
-          }
-        });
-        batch.set(doc(db, "users", uid, "months", monthId()), { monthTotal: 0, updatedAt: serverTimestamp() }, { merge: true });
+        snaps.forEach(s=>{ if(s.id.startsWith(monthId())) batch.set(doc(db,"users",uid,"days",s.id), {total:0,amazonCount:0,updatedAt:serverTimestamp()},{merge:true}); });
+        batch.set(doc(db,"users",uid,"months",monthId()), {monthTotal:0,updatedAt:serverTimestamp()},{merge:true});
         await batch.commit();
-        monthState.monthTotal = 0;
+        monthState.monthTotal=0;
       } else {
-        for (let i = 1; i <= 31; i++) {
-          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
-          const k = `DGT:${d}`;
-          const raw = localStorage.getItem(k);
-          if (raw) { try {
-            const o = JSON.parse(raw);
-            o.total = 0; o.amazonCount = 0;
-            localStorage.setItem(k, JSON.stringify(o));
-          } catch {} }
+        for(let i=1;i<=31;i++){
+          const d=`${monthId()}-${String(i).padStart(2,'0')}`, k=`DGT:${d}`, raw=localStorage.getItem(k);
+          if(raw){ try{ const o=JSON.parse(raw); o.total=0; o.amazonCount=0; localStorage.setItem(k,JSON.stringify(o)); }catch{} }
         }
-        monthState = { ...monthState, monthTotal: 0 };
-        saveLocalMonth(monthState);
+        monthState={...monthState,monthTotal:0}; saveLocalMonth(monthState);
       }
-      state.total = 0; state.amazonCount = 0;
-      saveLocal(state);
+      state.total=0; state.amazonCount=0; saveLocal(state);
     }
 
-    // ===== State =====
-    let state = loadLocal();                 // 日
+    // ===== 状態 =====
+    let state = {goal:0,total:0,amazonCount:0, ...loadLocal()};
+    let monthState = {monthGoal:0,monthTotal:0, ...loadLocalMonth()};
     let currentUser = null;
-    let qty = 1;                             // 配達テンプレの個数
-    let monthState = loadLocalMonth();       // 月
-    let activeTab = "day";                   // "day" | "month" | "ocr"
-    let rules = loadRules();                 // 自動分類ルール
-    let ocrItems = [];                       // { text, amount, type: 'income'|'expense', checked }
+    let qty = 1; // 掛け算
+    let activeTab = "day";
+    let rules = loadRules();
+    let ocrItems = [];
 
-    // ===== UI描画 =====
-    function renderQuickButtons() {
-      const box = document.getElementById('quickBtns');
-      box.innerHTML = '';
-      const list = [{ label: "+137円", amount: 137 }, { label: "+500円", amount: 500 }, { label: "+1,000円", amount: 1000 }];
-      list.forEach(p => {
+    // ===== UI =====
+    function renderQuickButtons(){
+      const box = document.getElementById('quickBtns'); box.innerHTML='';
+      const list = [{label:"+137円",amount:137},{label:"+500円",amount:500},{label:"+1,000円",amount:1000}];
+      list.forEach(p=>{
         const btn = document.createElement('button');
-        btn.className = `rounded-lg px-3 py-3 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition text-sm`;
+        btn.className = "btn btn-accent btn-text";
         btn.textContent = p.label;
-        btn.addEventListener('click', async () => {
-          const q = Math.max(1, Math.min(100, qty));
-          const delta = p.amount * q;
+        btn.addEventListener('click', async ()=>{
+          const q = Math.max(1,Math.min(100,qty));
+          const delta = p.amount*q;
           state.total += delta;
-          state.amazonCount = (state.amazonCount ?? 0) + q;
+          state.amazonCount = (state.amazonCount||0) + q;
           await persist(delta);
         });
         box.appendChild(btn);
       });
     }
 
-    function renderMonthHistory(list) {
-      const ul = document.getElementById('monthHistory');
-      const empty = document.getElementById('historyEmpty');
-      ul.innerHTML = '';
-      if (!list || list.length === 0) { empty.classList.remove('hidden'); return; }
+    function renderMonthHistory(list){
+      const ul = document.getElementById('monthHistory'); const empty = document.getElementById('historyEmpty');
+      ul.innerHTML='';
+      if(!list || list.length===0){ empty.classList.remove('hidden'); return; }
       empty.classList.add('hidden');
-      list.forEach(item => {
+      list.forEach(item=>{
         const li = document.createElement('li');
         li.className = "py-2 flex items-center justify-between";
-        const d = item.day.slice(5); // MM-DD
-        li.innerHTML = `<span class="text-sm text-neutral-600">${d.replace('-', '/')}</span>
-                        <span class="text-sm font-semibold">${fmtJPY.format(item.total || 0)}</span>`;
+        const d = item.day.slice(5).replace('-','/');
+        li.innerHTML = `<span class="body muted">${d}</span><span class="body font-semibold">${fmtJPY.format(item.total||0)}</span>`;
         ul.appendChild(li);
       });
     }
 
-    function updateDayUI() {
+    function setProgress(el, percent, achieved){
+      const bar = el;
+      if (achieved){
+        // 達成時は 0→100 を都度リプレイ
+        bar.classList.remove('achieved');
+        bar.style.width = '0%';
+        // リフローしてから付与
+        void bar.offsetWidth;
+        bar.classList.add('achieved');
+      } else {
+        bar.classList.remove('achieved');
+        bar.style.width = `${percent}%`;
+      }
+    }
+
+    function updateDayUI(){
       const { goal, total, amazonCount } = state;
-      document.getElementById('goalView').textContent = goal > 0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
+      document.getElementById('goalView').textContent = goal>0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
       document.getElementById('totalView').textContent = fmtJPY.format(total);
-      const percent = goal > 0 ? Math.min(100, Math.floor((total / goal) * 100)) : 0;
+      const percent = goal>0 ? Math.min(100, Math.floor((total/goal)*100)) : 0;
       document.getElementById('percentView').textContent = `${percent}%`;
-      document.getElementById('progressBar').style.width = `${percent}%`;
-      document.getElementById('remainingView').textContent =
-        goal <= 0 ? '目標未設定' :
-        total >= goal ? `達成！ +${fmtJPY.format(total - goal)}（超過）` :
-        `あと ${fmtJPY.format(goal - total)}`;
-      document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
-      document.getElementById('quickCount').textContent = amazonCount ?? 0;
+      setProgress(document.getElementById('progressBar'), percent, goal>0 && total>=goal);
+      const remEl = document.getElementById('remainingView');
+      if (goal<=0){ remEl.textContent = '目標未設定'; remEl.classList.remove('accent','warn'); }
+      else if (total>=goal){ remEl.innerHTML = `達成！ <span class="accent">+${fmtJPY.format(total-goal)}</span>（超過）`; remEl.classList.remove('warn'); }
+      else { remEl.innerHTML = `あと <span class="warn">${fmtJPY.format(goal-total)}</span>`; }
+      document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser?'クラウド保存':'端末保存'}）`;
+      document.getElementById('quickCount').textContent = amazonCount||0;
     }
 
-    function updateMonthUI() {
-      const { monthGoal, monthTotal } = monthState;
-      document.getElementById('monthGoalView').textContent = monthGoal > 0 ? `目標：${fmtJPY.format(monthGoal)}` : '未設定';
-      document.getElementById('monthTotalView').textContent = fmtJPY.format(monthTotal ?? 0);
-      const percent = (monthGoal ?? 0) > 0 ? Math.min(100, Math.floor(((monthTotal ?? 0) / monthGoal) * 100)) : 0;
+    function updateMonthUI(){
+      const { monthGoal=0, monthTotal=0 } = monthState;
+      document.getElementById('monthGoalView').textContent = monthGoal>0 ? `目標：${fmtJPY.format(monthGoal)}` : '未設定';
+      document.getElementById('monthTotalView').textContent = fmtJPY.format(monthTotal);
+      const percent = monthGoal>0 ? Math.min(100, Math.floor((monthTotal/monthGoal)*100)) : 0;
       document.getElementById('monthPercentView').textContent = `${percent}%`;
-      document.getElementById('monthProgressBar').style.width = `${percent}%`;
-      document.getElementById('monthRemainingView').textContent =
-        (monthGoal ?? 0) <= 0 ? '目標未設定' :
-        (monthTotal ?? 0) >= (monthGoal ?? 0) ? `達成！ +${fmtJPY.format((monthTotal ?? 0) - (monthGoal ?? 0))}（超過）` :
-        `あと ${fmtJPY.format((monthGoal ?? 0) - (monthTotal ?? 0))}`;
-      document.getElementById('monthLabel').textContent = `対象月：${monthId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
+      setProgress(document.getElementById('monthProgressBar'), percent, monthGoal>0 && monthTotal>=monthGoal);
+      const remEl = document.getElementById('monthRemainingView');
+      if (monthGoal<=0){ remEl.textContent='目標未設定'; remEl.classList.remove('accent','warn'); }
+      else if (monthTotal>=monthGoal){ remEl.innerHTML = `達成！ <span class="accent">+${fmtJPY.format(monthTotal-monthGoal)}</span>（超過）`; remEl.classList.remove('warn'); }
+      else { remEl.innerHTML = `あと <span class="warn">${fmtJPY.format(monthGoal-monthTotal)}</span>`; }
+      document.getElementById('monthLabel').textContent = `対象月：${monthId()}（${currentUser?'クラウド保存':'端末保存'}）`;
     }
 
-    function renderRules() {
-      const ul = document.getElementById('ruleList');
-      ul.innerHTML = '';
-      rules.forEach((r, idx) => {
+    function renderRules(){
+      const ul = document.getElementById('ruleList'); ul.innerHTML='';
+      rules.forEach((r,idx)=>{
         const li = document.createElement('li');
-        li.className = "flex items-center justify-between gap-2";
+        li.className = "flex items-center justify-between gap-8 mt-1";
         li.innerHTML = `
-          <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700">${r.keyword}</span>
-          <span class="text-sm">${r.type === 'income' ? '売上' : '経費'}</span>
-          <button class="text-xs text-rose-600 underline">削除</button>
+          <span class="chip">${r.keyword}</span>
+          <span class="text-sm">${r.type==='income'?'売上':'経費'}</span>
+          <button class="text-xs underline" style="color:var(--warn)">削除</button>
         `;
-        li.querySelector('button').addEventListener('click', () => {
-          rules.splice(idx,1); saveRules(rules); renderRules();
-        });
+        li.querySelector('button').addEventListener('click',()=>{ rules.splice(idx,1); saveRules(rules); renderRules(); });
         ul.appendChild(li);
       });
     }
 
-    function updateAllUI() {
+    async function refreshMonthHistory(){ renderMonthHistory(await loadMonthHistory(currentUser?.uid)); }
+
+    function updateAllUI(){
       renderQuickButtons();
       updateDayUI();
       updateMonthUI();
       renderRules();
-      document.getElementById('dayView').classList.toggle('hidden', activeTab !== 'day');
-      document.getElementById('monthView').classList.toggle('hidden', activeTab !== 'month');
-      document.getElementById('ocrView').classList.toggle('hidden', activeTab !== 'ocr');
-      document.getElementById('tabDay').classList.toggle('border-b-emerald-300', activeTab === 'day');
-      document.getElementById('tabMonth').classList.toggle('border-b-emerald-300', activeTab === 'month');
-      document.getElementById('tabOCR').classList.toggle('border-b-emerald-300', activeTab === 'ocr');
+      document.getElementById('dayView').classList.toggle('hidden', activeTab!=='day');
+      document.getElementById('monthView').classList.toggle('hidden', activeTab!=='month');
+      document.getElementById('ocrView').classList.toggle('hidden', activeTab!=='ocr');
     }
 
-    async function persist(deltaForMonth = 0) {
-      try {
-        if (currentUser) {
+    async function persist(deltaForMonth=0){
+      try{
+        if(currentUser){
           await saveCloud(currentUser.uid, state);
           if (deltaForMonth) await incMonthTotal(currentUser.uid, deltaForMonth);
         } else {
           saveLocal(state);
-          if (deltaForMonth) {
-            monthState.monthTotal = (monthState.monthTotal ?? 0) + deltaForMonth;
-            saveLocalMonth(monthState);
-          }
+          if (deltaForMonth){ monthState.monthTotal = (monthState.monthTotal||0)+deltaForMonth; saveLocalMonth(monthState); }
         }
-      } catch (e) { console.warn('Persist warning:', e);
       } finally {
         updateAllUI();
-        if (activeTab === 'month') await refreshMonthHistory();
+        if(activeTab==='month') await refreshMonthHistory();
       }
     }
 
-    async function refreshMonthHistory() {
-      const list = await loadMonthHistory(currentUser?.uid);
-      renderMonthHistory(list);
-    }
-
-    // ===== 初期描画 =====
-    updateAllUI();
-    refreshMonthHistory();
+    // 初期描画
+    updateAllUI(); refreshMonthHistory();
 
     // ===== ハンドラ（日） =====
-    document.getElementById('setGoalBtn').addEventListener('click', async () => {
-      const v = parseInt(document.getElementById('goalInput').value, 10);
-      state.goal = Number.isFinite(v) && v >= 0 ? v : 0;
-      document.getElementById('goalInput').value = '';
+    document.getElementById('setGoalBtn').addEventListener('click', async ()=>{
+      const v = parseInt(document.getElementById('goalInput').value,10);
+      state.goal = Number.isFinite(v)&&v>=0 ? v:0;
+      document.getElementById('goalInput').value='';
       await persist(0);
     });
-
-    document.getElementById('fdAddBtn').addEventListener('click', async () => {
-      const raw = document.getElementById('fdInput').value.trim();
-      const v = Number(raw);
-      if (!Number.isFinite(v) || v <= 0) { alert('0円より大きい数値を入力してください。'); return; }
-      const add = Math.floor(v);
-      state.total += add;
-      document.getElementById('fdInput').value = '';
+    document.getElementById('fdAddBtn').addEventListener('click', async ()=>{
+      const raw = document.getElementById('fdInput').value.trim(); const v = Number(raw);
+      if(!Number.isFinite(v)||v<=0){ alert('0円より大きい数値を入力してください。'); return; }
+      const add = Math.floor(v); state.total += add; document.getElementById('fdInput').value='';
       await persist(add);
     });
-
-    // 数量チップ
-    document.querySelectorAll('.qty').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const q = Number(btn.dataset.q || 1);
-        qty = Math.max(1, Math.min(100, q));
-        document.getElementById('qtyInput').value = qty;
-      });
+    document.querySelectorAll('.chip[data-q]').forEach(btn=>{
+      btn.addEventListener('click',()=>{ const q=Number(btn.dataset.q||1); qty=Math.max(1,Math.min(100,q)); document.getElementById('qtyInput').value=qty; });
     });
-    document.getElementById('qtyInput').addEventListener('change', (e) => {
-      const v = Number(e.target.value);
-      qty = Math.max(1, Math.min(100, Number.isFinite(v) ? v : 1));
-      e.target.value = qty;
+    document.getElementById('qtyInput').addEventListener('change',(e)=>{
+      const v = Number(e.target.value); qty=Math.max(1,Math.min(100,Number.isFinite(v)?v:1)); e.target.value=qty;
     });
-
-    document.getElementById('resetBtn').addEventListener('click', async () => {
-      if (!confirm('本日のデータをリセットします（※月合計は変えません）。')) return;
-      state = { goal: 0, total: 0, amazonCount: 0 };
-      await persist(0);
+    document.getElementById('resetBtn').addEventListener('click', async ()=>{
+      if(!confirm('本日のデータをリセットします（※月合計は変えません）。')) return;
+      state={goal:0,total:0,amazonCount:0}; await persist(0);
     });
 
     // ===== 認証 =====
-    document.getElementById('loginBtn').addEventListener('click', async () => {
-      await signInWithPopup(auth, new GoogleAuthProvider());
-    });
-    document.getElementById('logoutBtn').addEventListener('click', async () => { await signOut(auth); });
+    document.getElementById('loginBtn').addEventListener('click', async ()=>{ await signInWithPopup(auth,new GoogleAuthProvider()); });
+    document.getElementById('logoutBtn').addEventListener('click', async ()=>{ await signOut(auth); });
+    onAuthStateChanged(auth, async (user)=>{
+      currentUser = user||null;
+      document.getElementById('userView').textContent = currentUser? `${currentUser.email}` : '未ログイン';
+      document.getElementById('loginBtn').classList.toggle('hidden',!!currentUser);
+      document.getElementById('logoutBtn').classList.toggle('hidden',!currentUser);
 
-    onAuthStateChanged(auth, async (user) => {
-      currentUser = user || null;
-      document.getElementById('userView').textContent = currentUser ? `${currentUser.email}` : '未ログイン';
-      document.getElementById('loginBtn').classList.toggle('hidden', !!currentUser);
-      document.getElementById('logoutBtn').classList.toggle('hidden', !currentUser);
-
-      if (currentUser) {
+      if(currentUser){
         const cloud = await loadCloud(currentUser.uid);
-        if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
-          const local = loadLocal(); state = local; await saveCloud(currentUser.uid, state);
+        if((cloud.goal||0)===0 && (cloud.total||0)===0 && (cloud.amazonCount||0)===0){
+          // 初回はローカルを昇格
+          state = {...state, ...loadLocal()};
+          await saveCloud(currentUser.uid, state);
         } else { state = cloud; }
         monthState = await loadMonth(currentUser.uid);
       } else {
-        state = loadLocal();
-        monthState = loadLocalMonth();
+        state = {goal:0,total:0,amazonCount:0, ...loadLocal()};
+        monthState = {monthGoal:0,monthTotal:0, ...loadLocalMonth()};
       }
-      updateAllUI();
-      await refreshMonthHistory();
+      updateAllUI(); await refreshMonthHistory();
     });
 
     // ===== タブ =====
-    document.getElementById('tabDay').addEventListener('click', () => { activeTab = 'day'; updateAllUI(); });
-    document.getElementById('tabMonth').addEventListener('click', async () => {
-      activeTab = 'month';
-      if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch(e){} }
+    document.getElementById('tabDay').addEventListener('click',()=>{ activeTab='day'; updateAllUI(); });
+    document.getElementById('tabMonth').addEventListener('click',async ()=>{
+      activeTab='month';
+      if(currentUser){ try{ await recomputeMonthFromDays(currentUser.uid); }catch{} }
       updateAllUI(); await refreshMonthHistory();
     });
-    document.getElementById('tabOCR').addEventListener('click', () => { activeTab = 'ocr'; updateAllUI(); });
+    document.getElementById('tabOCR').addEventListener('click',()=>{ activeTab='ocr'; updateAllUI(); });
 
-    document.getElementById('setMonthGoalBtn').addEventListener('click', async () => {
-      const raw = document.getElementById('monthGoalInput').value.trim();
-      const v = parseInt(raw, 10);
-      const goal = Number.isFinite(v) && v >= 0 ? v : 0;
-      monthState.monthGoal = goal;
-      document.getElementById('monthGoalInput').value = '';
-      try { if (currentUser) await saveMonthGoal(currentUser.uid, goal); else saveLocalMonth(monthState);
-      } finally { updateAllUI(); }
+    document.getElementById('setMonthGoalBtn').addEventListener('click', async ()=>{
+      const v=parseInt(document.getElementById('monthGoalInput').value,10);
+      const goal = Number.isFinite(v)&&v>=0? v:0;
+      monthState.monthGoal=goal; document.getElementById('monthGoalInput').value='';
+      try{ if(currentUser) await saveMonthGoal(currentUser.uid,goal); else saveLocalMonth(monthState); } finally { updateAllUI(); }
+    });
+    document.getElementById('resetMonthBtn').addEventListener('click', async ()=>{
+      if(!confirm('今月の合計をリセットします。目標は残ります。よろしいですか？')) return;
+      try{ await resetMonthData(currentUser?.uid); if(currentUser) await recomputeMonthFromDays(currentUser.uid); }
+      catch(e){ alert('リセット中にエラーが発生しました。'); }
+      finally{ updateAllUI(); await refreshMonthHistory(); }
     });
 
-    document.getElementById('resetMonthBtn').addEventListener('click', async () => {
-      if (!confirm('今月の合計をリセットします。目標は残ります。よろしいですか？')) return;
-      try {
-        await resetMonthData(currentUser?.uid);
-        if (currentUser) await recomputeMonthFromDays(currentUser.uid);
-      } catch (e) {
-        alert('リセット中にエラーが発生しました。'); console.warn(e);
-      } finally {
-        updateAllUI();
-        await refreshMonthHistory();
-      }
-    });
-
-    // ==== CSV / PDF 出力 ====
-    async function getMonthDaysData() {
-      const out = [];
-      if (currentUser) {
-        const daysRef = collection(db, "users", currentUser.uid, "days");
-        const snaps = await getDocs(daysRef);
-        snaps.forEach(s => {
-          if (s.id.startsWith(monthId())) {
-            const d = s.data();
-            out.push({ day: s.id, goal: d.goal ?? 0, total: d.total ?? 0 });
-          }
-        });
-      } else {
-        for (let i = 1; i <= 31; i++) {
-          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
-          const raw = localStorage.getItem(`DGT:${d}`);
-          if (!raw) continue;
-          try { const o = JSON.parse(raw); out.push({ day: d, goal: o.goal ?? 0, total: o.total ?? 0 }); } catch {}
+    // ==== CSV / PDF ====
+    async function getMonthDaysData(){
+      const out=[];
+      if(currentUser){
+        const snaps=await getDocs(collection(db,"users",currentUser.uid,"days"));
+        snaps.forEach(s=>{ if(s.id.startsWith(monthId())){ const d=s.data(); out.push({day:s.id,goal:d.goal||0,total:d.total||0}); }});
+      }else{
+        for(let i=1;i<=31;i++){
+          const d=`${monthId()}-${String(i).padStart(2,'0')}`, raw=localStorage.getItem(`DGT:${d}`);
+          if(raw){ try{ const o=JSON.parse(raw); out.push({day:d,goal:o.goal||0,total:o.total||0}); }catch{} }
         }
       }
       return out.sort((a,b)=>a.day.localeCompare(b.day));
     }
-
-    function toCSV(rows) {
-      const header = ["日付(YYYY-MM-DD)", "日目標(円)", "日合計(円)", "達成率(%)", "月ID"];
-      const lines = [header.join(",")];
-      for (const r of rows) {
-        const pct = r.goal > 0 ? Math.floor((r.total / r.goal) * 100) : 0;
-        lines.push([r.day, r.goal ?? 0, r.total ?? 0, pct, monthId()].join(","));
+    function toCSV(rows){
+      const header=["日付(YYYY-MM-DD)","日目標(円)","日合計(円)","達成率(%)","月ID"];
+      const lines=[header.join(",")];
+      for(const r of rows){
+        const pct=r.goal>0? Math.floor((r.total/r.goal)*100):0;
+        lines.push([r.day,r.goal||0,r.total||0,pct,monthId()].join(","));
       }
-      const monthHeader = ["今月目標(円)","今月合計(円)","達成率(%)","対象月(YYYY-MM)"].join(",");
-      const monthLine = [
-        monthState.monthGoal ?? 0,
-        monthState.monthTotal ?? 0,
-        (monthState.monthGoal ?? 0) > 0
-          ? Math.floor(((monthState.monthTotal ?? 0)/(monthState.monthGoal ?? 0))*100)
-          : 0,
+      const monthHeader=["今月目標(円)","今月合計(円)","達成率(%)","対象月(YYYY-MM)"].join(",");
+      const monthLine=[
+        monthState.monthGoal||0,
+        monthState.monthTotal||0,
+        (monthState.monthGoal||0)>0? Math.floor(((monthState.monthTotal||0)/(monthState.monthGoal||0))*100):0,
         monthId()
       ].join(",");
-      return [monthHeader, monthLine, "", ...lines].join("\n");
+      return [monthHeader,monthLine,"",...lines].join("\n");
     }
-
-    function downloadCSV(filename, csvTxt) {
-      const BOM = new Uint8Array([0xEF,0xBB,0xBF]);
-      const blob = new Blob([BOM, csvTxt], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = filename;
-      document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    function downloadCSV(filename, txt){
+      const BOM=new Uint8Array([0xEF,0xBB,0xBF]);
+      const blob=new Blob([BOM,txt],{type:"text/csv"});
+      const url=URL.createObjectURL(blob); const a=document.createElement("a");
+      a.href=url; a.download=filename; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
     }
-
-    async function exportMonthCSV() {
-      try {
-        if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
-        const rows = await getMonthDaysData();
-        const csv = toCSV(rows);
+    async function exportMonthCSV(){
+      try{
+        if(currentUser){ try{ await recomputeMonthFromDays(currentUser.uid); }catch{} }
+        const rows=await getMonthDaysData(); const csv=toCSV(rows);
         downloadCSV(`DailyGoalTracker_${monthId()}.csv`, csv);
-      } catch (e) { console.error(e); alert("CSVの作成に失敗しました。"); }
+      }catch(e){ alert("CSVの作成に失敗しました。"); }
     }
-
-    async function exportMonthPDFCloud() {
-      if (!currentUser) { alert('PDF（クラウド生成）はログインが必要です。'); return; }
-      try {
-        if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
-        const rows = await getMonthDaysData();
-        const payload = {
+    async function exportMonthPDFCloud(){
+      if(!currentUser){ alert('PDF（クラウド生成）はログインが必要です。'); return; }
+      try{
+        if(currentUser){ try{ await recomputeMonthFromDays(currentUser.uid); }catch{} }
+        const rows=await getMonthDaysData();
+        const payload={
           monthId: monthId(),
-          monthGoal: monthState.monthGoal ?? 0,
-          monthTotal: monthState.monthTotal ?? 0,
-          rows: rows.map(r => ({
-            day: r.day, goal: r.goal ?? 0, total: r.total ?? 0,
-            pct: (r.goal ?? 0) > 0 ? Math.floor((r.total ?? 0)/(r.goal ?? 1)*100) : 0
-          })),
+          monthGoal: monthState.monthGoal||0,
+          monthTotal: monthState.monthTotal||0,
+          rows: rows.map(r=>({day:r.day,goal:r.goal||0,total:r.total||0,pct:(r.goal||0)>0?Math.floor((r.total||0)/(r.goal||1)*100):0}))
         };
-        const callable = httpsCallable(functions, 'generateMonthlyPdf');
-        const res = await callable(payload);
-        const { base64, filename } = res.data || {};
-        if (!base64) throw new Error('サーバーからPDFデータを受信できませんでした。');
-
-        const dataUrl = `data:application/pdf;base64,${base64}`;
-        const popup = window.open(dataUrl, '_blank');
-        const a = document.createElement('a');
-        a.href = dataUrl; a.download = filename || `DailyGoalTracker_${monthId()}.pdf`;
-        document.body.appendChild(a); a.click(); a.remove();
-        if (!popup) console.log('Popup blocked; used download fallback.');
-      } catch (e) { console.error(e); alert(e?.message || 'PDF生成に失敗しました。'); }
+        const res = await httpsCallable(functions,'generateMonthlyPdf')(payload);
+        const { base64, filename } = res.data||{};
+        if(!base64) throw new Error('サーバーからPDFデータを受信できませんでした。');
+        const dataUrl=`data:application/pdf;base64,${base64}`; const popup=window.open(dataUrl,'_blank');
+        const a=document.createElement('a'); a.href=dataUrl; a.download=filename||`DailyGoalTracker_${monthId()}.pdf`; document.body.appendChild(a); a.click(); a.remove();
+        if(!popup) console.log('Popup blocked; used download fallback.');
+      }catch(e){ alert(e?.message||'PDF生成に失敗しました。'); }
     }
+    document.getElementById('exportCsvBtn')?.addEventListener('click',exportMonthCSV);
+    document.getElementById('exportPdfCloudBtn')?.addEventListener('click',exportMonthPDFCloud);
 
-    document.getElementById('exportCsvBtn')?.addEventListener('click', exportMonthCSV);
-    document.getElementById('exportPdfCloudBtn')?.addEventListener('click', exportMonthPDFCloud);
-
-    // ===== OCR: ドラッグ&ドロップ + ファイル選択 =====
-    const dz = document.getElementById('dropzone');
-    const inputImg = document.getElementById('imgInput');
-    const statusEl = document.getElementById('ocrStatus');
-    const resultsWrap = document.getElementById('ocrResultsWrap');
-    const resultsList = document.getElementById('ocrResults');
-
-    function showStatus(msg, show=true) {
-      statusEl.textContent = msg;
-      statusEl.classList.toggle('hidden', !show);
+    // ===== OCR =====
+    const dz=document.getElementById('dropzone'), inputImg=document.getElementById('imgInput'), statusEl=document.getElementById('ocrStatus'), resultsWrap=document.getElementById('ocrResultsWrap'), resultsList=document.getElementById('ocrResults');
+    function showStatus(msg,show=true){ statusEl.textContent=msg; statusEl.classList.toggle('hidden',!show); }
+    function loadRuleType(text){
+      const low=text.toLowerCase();
+      for(const r of rules){ if(low.includes(r.keyword.toLowerCase())) return r.type; }
+      const incomeKeys=["uber","ウーバー","eats","amazon","flex","出前館","menu","wolt","didi","配達","報酬","売上"];
+      const expenseKeys=["ガソリン","燃料","交通","高速","駐車","駐輪","洗車","メンテ","整備","保険","通信","スマホ","手数料","振込手数料"];
+      if(incomeKeys.some(k=>low.includes(k))) return "income";
+      if(expenseKeys.some(k=>low.includes(k))) return "expense";
+      return "income";
     }
-
-    function classifyByRules(text) {
-      const low = text.toLowerCase();
-      for (const r of rules) {
-        if (low.includes(r.keyword.toLowerCase())) return r.type; // 'income'|'expense'
+    function parseAmounts(text){
+      const lines=text.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
+      const items=[];
+      for(const line of lines){
+        const m=line.match(/(?:¥|￥)?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.\d+)?\s*(?:円)?/);
+        if(!m) continue;
+        const raw=m[1].replace(/,/g,''); const amount=parseInt(raw,10);
+        if(!Number.isFinite(amount) || amount<=50) continue;
+        const type=loadRuleType(line);
+        items.push({text:line,amount,type,checked:type==='income'});
       }
-      // 既定のキーワード群
-      const incomeKeys = ["uber", "ウーバー", "eats", "amazon", "flex", "出前館", "menu", "wolt", "didi", "配達", "報酬", "売上"];
-      const expenseKeys = ["ガソリン","燃料","交通","高速","駐車","駐輪","洗車","メンテ","整備","保険","通信","スマホ","手数料","振込手数料"];
-      if (incomeKeys.some(k => low.includes(k))) return "income";
-      if (expenseKeys.some(k => low.includes(k))) return "expense";
-      return "income"; // デフォルトは売上に寄せる（手戻りを減らす）
+      return items;
     }
-
-    function parseAmounts(text) {
-      // 金額抽出: ¥/￥/数値（カンマ）を対象。例: 1,234 / ￥1,234 / 1234円
-      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      const items = [];
-      for (const line of lines) {
-        // 数字抽出
-        const m = line.match(/(?:¥|￥)?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.\d+)?\s*(?:円)?/);
-        if (!m) continue;
-        const raw = m[1].replace(/,/g,'');
-        const amount = parseInt(raw,10);
-        if (!Number.isFinite(amount) || amount<=0) continue;
-        const type = classifyByRules(line);
-        items.push({ text: line, amount, type, checked: type==='income' });
-      }
-      // 重複/極端に小さいノイズは除外（例: 1, 10 など）
-      return items.filter(x => x.amount >= 50);
-    }
-
-    function renderOCRItems() {
-      resultsList.innerHTML = '';
-      ocrItems.forEach((it, idx) => {
-        const li = document.createElement('li');
-        li.className = "rounded-lg border border-emerald-200 p-2 bg-emerald-50";
-        li.innerHTML = `
-          <div class="flex items-center justify-between gap-2">
-            <div class="text-sm">
-              <div class="font-medium">${it.type==='income' ? '売上' : '経費'}：${fmtJPY.format(it.amount)}</div>
-              <div class="text-neutral-600 text-xs break-all">${it.text}</div>
+    function renderOCRItems(){
+      resultsList.innerHTML='';
+      ocrItems.forEach((it,idx)=>{
+        const li=document.createElement('li');
+        li.className="card";
+        li.innerHTML=`
+          <div class="flex items-center justify-between gap-16">
+            <div class="body">
+              <div class="font-semibold">${it.type==='income'?'売上':'経費'}：${fmtJPY.format(it.amount)}</div>
+              <div class="muted text-xs break-all">${it.text}</div>
             </div>
-            <div class="flex items-center gap-2">
-              <label class="text-xs flex items-center gap-1"><input type="checkbox" ${it.checked?'checked':''}> 反映</label>
-              <select class="text-xs border border-emerald-200 rounded px-1 py-0.5">
+            <div class="flex items-center gap-8">
+              <label class="text-xs flex items-center gap-8"><input type="checkbox" ${it.checked?'checked':''}> 反映</label>
+              <select class="input" style="width:110px; padding:6px 8px;">
                 <option value="income" ${it.type==='income'?'selected':''}>売上</option>
                 <option value="expense" ${it.type==='expense'?'selected':''}>経費</option>
               </select>
             </div>
-          </div>
-        `;
-        const chk = li.querySelector('input[type="checkbox"]');
-        const sel = li.querySelector('select');
-        chk.addEventListener('change', e => { ocrItems[idx].checked = e.target.checked; });
-        sel.addEventListener('change', e => { ocrItems[idx].type = e.target.value; });
+          </div>`;
+        const chk=li.querySelector('input[type="checkbox"]'); const sel=li.querySelector('select');
+        chk.addEventListener('change',e=>{ ocrItems[idx].checked=e.target.checked; });
+        sel.addEventListener('change',e=>{ ocrItems[idx].type=e.target.value; });
         resultsList.appendChild(li);
       });
       resultsWrap.classList.toggle('hidden', ocrItems.length===0);
     }
-
-    async function runOCRFromFile(file) {
-      showStatus('認識中…（1枚あたり数秒）', true);
-      try {
-        const { data } = await Tesseract.recognize(file, 'jpn+eng', {
-          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
-          logger: m => { /* console.log(m) */ }
-        });
-        const text = data?.text || '';
-        ocrItems = parseAmounts(text);
-        renderOCRItems();
-      } catch (e) {
-        console.error(e); alert('OCRに失敗しました。画像を変えてお試しください。');
-      } finally {
-        showStatus('', false);
-      }
+    async function runOCRFromFile(file){
+      showStatus('認識中…（1枚あたり数秒）',true);
+      try{
+        const { data } = await Tesseract.recognize(file,'jpn+eng',{tessedit_pageseg_mode:Tesseract.PSM.AUTO});
+        ocrItems = parseAmounts(data?.text||''); renderOCRItems();
+      }catch(e){ alert('OCRに失敗しました。画像を変えてお試しください。'); } finally{ showStatus('',false); }
     }
-
-    // D&D
-    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('bg-emerald-100'); });
-    dz.addEventListener('dragleave', () => dz.classList.remove('bg-emerald-100'));
-    dz.addEventListener('drop', (e) => {
-      e.preventDefault(); dz.classList.remove('bg-emerald-100');
-      const f = e.dataTransfer.files?.[0]; if (f) runOCRFromFile(f);
+    dz.addEventListener('dragover',e=>{ e.preventDefault(); dz.style.background='#F2FFFB'; });
+    dz.addEventListener('dragleave',()=>{ dz.style.background='#fff'; });
+    dz.addEventListener('drop',e=>{ e.preventDefault(); dz.style.background='#fff'; const f=e.dataTransfer.files?.[0]; if(f) runOCRFromFile(f); });
+    inputImg.addEventListener('change',e=>{ const f=e.target.files?.[0]; if(f) runOCRFromFile(f); inputImg.value=''; });
+    document.getElementById('applyIncomeBtn').addEventListener('click', async ()=>{
+      const add = ocrItems.filter(i=>i.checked && i.type==='income').reduce((s,i)=>s+i.amount,0);
+      if(add<=0){ alert('反映対象の売上がありません。'); return; }
+      state.total += add; await persist(add); alert(`売上に ${fmtJPY.format(add)} を反映しました。`);
     });
-    inputImg.addEventListener('change', (e) => {
-      const f = e.target.files?.[0]; if (f) runOCRFromFile(f);
-      inputImg.value = '';
-    });
-
-    // 反映ボタン
-    document.getElementById('applyIncomeBtn').addEventListener('click', async () => {
-      const add = ocrItems.filter(i => i.checked && i.type==='income').reduce((s,i)=>s+i.amount,0);
-      if (add <= 0) { alert('反映対象の売上がありません。'); return; }
-      state.total += add;
-      await persist(add);
-      alert(`売上に ${fmtJPY.format(add)} を反映しました。`);
-    });
-    document.getElementById('clearResultsBtn').addEventListener('click', () => { ocrItems = []; renderOCRItems(); });
-
-    // ルール追加（無料は3件まで）
-    document.getElementById('addRuleBtn').addEventListener('click', () => {
-      const kw = document.getElementById('ruleKeyword').value.trim();
-      const tp = document.getElementById('ruleType').value;
-      if (!kw) return;
-      if (rules.length >= 3) { alert('無料プランではルールは3件までです。'); return; }
-      rules.push({ keyword: kw, type: tp });
-      saveRules(rules);
-      document.getElementById('ruleKeyword').value = '';
-      renderRules();
-      // 既存OCR結果に再適用
-      ocrItems = ocrItems.map(it => ({ ...it, type: classifyByRules(it.text) }));
-      renderOCRItems();
+    document.getElementById('clearResultsBtn').addEventListener('click',()=>{ ocrItems=[]; renderOCRItems(); });
+    document.getElementById('addRuleBtn').addEventListener('click',()=>{
+      const kw=document.getElementById('ruleKeyword').value.trim(); const tp=document.getElementById('ruleType').value;
+      if(!kw) return; if(rules.length>=3){ alert('無料プランではルールは3件までです。'); return; }
+      rules.push({keyword:kw,type:tp}); saveRules(rules); document.getElementById('ruleKeyword').value=''; renderRules();
+      ocrItems = ocrItems.map(it=>({...it,type:loadRuleType(it.text)})); renderOCRItems();
     });
   </script>
 </body>
