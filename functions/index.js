@@ -8,13 +8,11 @@ const { setGlobalOptions } = require("firebase-functions/v2");
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
-// ★ デフォルトバケットを明示（appspot.com を使う）
+// ====== バケットを明示（appspot.com を必ず使う） ======
 const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
 const defaultBucket = `${projectId}.appspot.com`;
 
-admin.initializeApp({
-  storageBucket: defaultBucket,
-});
+admin.initializeApp({ storageBucket: defaultBucket });
 
 // リージョン/リソース（PDF用途で余裕めに）
 setGlobalOptions({
@@ -25,7 +23,7 @@ setGlobalOptions({
 
 const BUCKET = admin.storage().bucket();
 
-// Puppeteer の実行モードを環境に合わせて明示
+// Puppeteer の実行モードを環境に合わせて指定
 chromium.setHeadlessMode = true;
 chromium.setGraphicsMode = false;
 
@@ -122,21 +120,35 @@ exports.generateMonthlyPdf = onCall(async (request) => {
   if (!monthId) throw new HttpsError("invalid-argument", "monthId が指定されていません。");
 
   try {
+    // デフォルトバケットが取れているかログ（デバッグ用）
+    console.log("Using bucket:", defaultBucket);
+
     const html = await buildMonthlyHtml(uid, monthId);
 
     const executablePath = await chromium.executablePath();
-    // 念のため環境変数でも指定
     process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
 
     const browser = await puppeteer.launch({
-      args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
-      defaultViewport: chromium.defaultViewport,
       executablePath,
       headless: chromium.headless,
+      defaultViewport: chromium.defaultViewport,
+      // ★ EFAULT対策でオプション増し
+      args: [
+        ...chromium.args,
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-gpu",
+        "--disable-dev-shm-usage",
+        "--single-process",
+        "--no-zygote",
+      ],
+      ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
+    // setContent より安定することがある
+    const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(html);
+    await page.goto(dataUrl, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
     await page.emulateMediaType("screen");
 
     const pdfBuffer = await page.pdf({
