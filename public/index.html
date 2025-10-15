@@ -5,103 +5,126 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>Daily Goal Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <meta name="theme-color" content="#0a0a0a">
+  <meta name="theme-color" content="#f5f6ff">
   <style>
     button, input, textarea { touch-action: manipulation; }
+    .chip { transition: box-shadow .15s ease, transform .02s ease; }
+    .chip:active { transform: translateY(1px); }
+    .soft-card { backdrop-filter: saturate(150%) blur(2px); }
   </style>
 </head>
-<body class="bg-neutral-950 text-white min-h-screen">
+<body class="bg-stone-50 text-neutral-900 min-h-screen">
   <main class="max-w-md mx-auto px-4 pb-28 pt-6">
     <header class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Daily Goal Tracker</h1>
-        <p class="text-neutral-400 text-sm mt-1">今日の目標に対する進捗をサクッと管理</p>
+        <p class="text-neutral-500 text-sm mt-1">今日の目標に対する進捗をサクッと管理</p>
       </div>
       <div class="text-right">
-        <p id="userView" class="text-xs text-neutral-400">未ログイン</p>
+        <p id="userView" class="text-xs text-neutral-500">未ログイン</p>
         <div class="mt-2 flex gap-2 justify-end">
-          <button id="loginBtn" class="px-3 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-sm">Googleでログイン</button>
-          <button id="logoutBtn" class="px-3 py-1 rounded bg-neutral-700 hover:bg-neutral-600 text-sm hidden">ログアウト</button>
+          <button id="loginBtn" class="px-3 py-1 rounded bg-emerald-300 hover:bg-emerald-400 text-sm">Googleでログイン</button>
+          <button id="logoutBtn" class="px-3 py-1 rounded bg-neutral-300 hover:bg-neutral-400 text-sm hidden">ログアウト</button>
         </div>
       </div>
     </header>
 
-    <!-- 職種テンプレ（見栄えが大きく変わる新UI） -->
-    <section class="mb-4 p-3 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <!-- 職種テンプレ -->
+    <section class="mb-4 p-3 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <h2 class="font-semibold mb-3">職種テンプレート</h2>
       <div id="professionChips" class="flex gap-2">
-        <!-- 動的に選択状態を付与 -->
-        <button data-prof="delivery" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">配達員</button>
-        <button data-prof="writer" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">ライター</button>
-        <button data-prof="creator" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">クリエイター</button>
+        <button data-prof="delivery" class="chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm">配達員</button>
+        <button data-prof="writer"   class="chip px-3 py-1.5 rounded-full border border-stone-300 bg-sky-50 text-sm">ライター</button>
+        <button data-prof="creator"  class="chip px-3 py-1.5 rounded-full border border-stone-300 bg-violet-50 text-sm">クリエイター</button>
       </div>
-      <p class="text-neutral-500 text-xs mt-2">※ 選んだ職種は {ログイン時=クラウド / 未ログイン=端末} に保存されます</p>
+      <p class="text-neutral-500 text-xs mt-2">※ 選んだ職種は {ログイン時=クラウド / 未ログイン=端末} に保存</p>
     </section>
 
     <!-- 目標設定 -->
-    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <h2 class="font-semibold mb-3">目標金額</h2>
       <div class="flex gap-2">
         <input id="goalInput" type="number" inputmode="numeric" min="0" step="100"
-               class="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+               class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
                placeholder="例: 10000">
         <button id="setGoalBtn"
-                class="shrink-0 rounded-lg px-4 py-2 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 transition">
+                class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
           設定
         </button>
       </div>
-      <p id="goalView" class="text-neutral-300 text-sm mt-2">未設定</p>
-      <p id="saveHint" class="text-[11px] text-neutral-500 mt-1">未ログイン時は端末に保存／ログイン中はクラウドに自動保存</p>
+      <p id="goalView" class="text-neutral-600 text-sm mt-2">未設定</p>
+      <p id="saveHint" class="text-[11px] text-neutral-400 mt-1">未ログイン時は端末保存／ログイン中はクラウド保存</p>
     </section>
 
     <!-- 合計表示＆進捗バー -->
-    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <div class="flex items-end justify-between">
         <div>
-          <p class="text-neutral-400 text-sm">現在の合計</p>
+          <p class="text-neutral-500 text-sm">現在の合計</p>
           <p id="totalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
         </div>
         <div class="text-right">
-          <p class="text-neutral-400 text-sm">達成率</p>
+          <p class="text-neutral-500 text-sm">達成率</p>
           <p id="percentView" class="text-xl font-bold">0%</p>
         </div>
       </div>
-      <div class="mt-3 h-3 w-full bg-neutral-800 rounded-full overflow-hidden">
-        <div id="progressBar" class="h-full bg-emerald-500" style="width:0%"></div>
+      <div class="mt-3 h-3 w-full bg-stone-200 rounded-full overflow-hidden">
+        <div id="progressBar" class="h-full bg-emerald-300" style="width:0%"></div>
       </div>
-      <p id="remainingView" class="text-neutral-300 text-sm mt-2">目標未設定</p>
+      <p id="remainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
     </section>
 
-    <!-- クイック加算（テンプレ） ※旧Amazonセクション置換 -->
-    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <!-- クイック加算（テンプレ） -->
+    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <div class="flex items-center justify-between mb-3">
         <h2 class="font-semibold">クイック加算（テンプレ）</h2>
-        <p class="text-neutral-300 text-sm">回数：<span id="quickCount" class="font-bold">0</span></p>
+        <p class="text-neutral-700 text-sm">回数：<span id="quickCount" class="font-bold">0</span></p>
       </div>
+
+      <!-- 配達員：数量チップ & 任意個数 -->
+      <div id="qtyArea" class="mb-3 hidden">
+        <div class="flex items-center justify-between">
+          <div class="flex flex-wrap gap-2">
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="2">×2</button>
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="5">×5</button>
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="10">×10</button>
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="20">×20</button>
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="50">×50</button>
+            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="100">×100</button>
+          </div>
+          <div class="flex items-center gap-2">
+            <input id="qtyInput" type="number" min="1" max="100" value="1"
+                   class="w-20 rounded bg-white border border-stone-300 px-2 py-1 text-right" />
+            <span class="text-sm text-neutral-500">個</span>
+          </div>
+        </div>
+        <p class="text-[11px] text-neutral-400 mt-1">クイックボタンの金額 × 個数で加算（既定=1）。チップを押すと個数欄に反映。</p>
+      </div>
+
       <div id="quickBtns" class="grid grid-cols-3 gap-2">
         <!-- 職種に応じて動的生成 -->
       </div>
     </section>
 
-    <!-- フードデリバリー 金額入力（手動） -->
-    <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <!-- 手動入力 -->
+    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <h2 class="font-semibold mb-3">手動入力</h2>
       <div class="flex gap-2">
         <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
-               class="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
+               class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
                placeholder="金額（円）を入力">
         <button id="fdAddBtn"
-                class="shrink-0 rounded-lg px-4 py-2 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 transition">
+                class="shrink-0 rounded-lg px-4 py-2 bg-sky-300 hover:bg-sky-400 active:bg-sky-500 transition">
           追加
         </button>
       </div>
     </section>
 
     <!-- リセット -->
-    <section class="p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
+    <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <h2 class="font-semibold mb-3">1日の締め</h2>
       <button id="resetBtn"
-              class="w-full rounded-lg px-4 py-3 bg-red-600 hover:bg-red-500 active:bg-red-700 transition">
+              class="w-full rounded-lg px-4 py-3 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition">
         本日のデータをリセット
       </button>
       <p id="dateView" class="text-neutral-500 text-xs mt-2"></p>
@@ -127,6 +150,14 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
+
+    // ===== テーマ色（職種ごと） =====
+    // Tailwindユーティリティをクラス付け替えで表現
+    const THEME = {
+      delivery: { bar: "bg-emerald-300", btn: "bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500" },
+      writer:   { bar: "bg-sky-300",     btn: "bg-sky-300 hover:bg-sky-400 active:bg-sky-500" },
+      creator:  { bar: "bg-violet-300",  btn: "bg-violet-300 hover:bg-violet-400 active:bg-violet-500" },
+    };
 
     // ===== プリセット定義（職種ごと） =====
     const PRESETS = {
@@ -158,7 +189,7 @@
 
     function loadLocal() {
       const raw = localStorage.getItem(todayKey());
-      if (!raw) return { goal: 0, total: 0, amazonCount: 0 }; // amazonCount を「クイック回数」に流用
+      if (!raw) return { goal: 0, total: 0, amazonCount: 0 };
       try { return JSON.parse(raw); } catch { return { goal: 0, total: 0, amazonCount: 0 }; }
     }
     function saveLocal(s) {
@@ -187,7 +218,7 @@
     async function loadProfile(uid) {
       const ref = doc(db, "users", uid, "profile", "main");
       const snap = await getDoc(ref);
-      if (snap.exists()) return snap.data(); // { profession }
+      if (snap.exists()) return snap.data();
       return { profession: "delivery" };
     }
     async function saveProfile(uid, profile) {
@@ -199,29 +230,64 @@
     let state = loadLocal();
     let currentUser = null;
     let profile = loadLocalProfile(); // { profession }
+    let qty = 1; // 配達テンプレの個数
 
     // ===== UI更新 =====
+    function applyTheme() {
+      const theme = THEME[profile.profession] || THEME.delivery;
+      const bar = document.getElementById('progressBar');
+      bar.className = `h-full ${theme.bar}`;
+      // 職種チップの見た目（選択強調）
+      document.querySelectorAll('#professionChips .chip').forEach(btn => {
+        const active = btn.dataset.prof === profile.profession;
+        btn.classList.toggle('ring-2', active);
+        btn.classList.toggle('ring-offset-2', active);
+        btn.classList.toggle('ring-emerald-300', active && profile.profession==='delivery');
+        btn.classList.toggle('ring-sky-300',     active && profile.profession==='writer');
+        btn.classList.toggle('ring-violet-300',  active && profile.profession==='creator');
+      });
+    }
+
+    function renderQuickButtons() {
+      const box = document.getElementById('quickBtns');
+      const theme = THEME[profile.profession] || THEME.delivery;
+      box.innerHTML = '';
+      const list = PRESETS[profile.profession] || PRESETS.delivery;
+      list.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = `rounded-lg px-3 py-3 ${theme.btn} transition text-sm`;
+        btn.textContent = p.label;
+        btn.addEventListener('click', async () => {
+          const q = Math.max(1, Math.min(100, qty));
+          state.total += (p.amount * q);
+          state.amazonCount += q; // クイック回数として加算
+          await persist();
+        });
+        box.appendChild(btn);
+      });
+
+      // 配達員なら数量エリアを表示、それ以外は隠す
+      const qtyArea = document.getElementById('qtyArea');
+      qtyArea.classList.toggle('hidden', profile.profession !== 'delivery');
+    }
+
     function updateUI() {
       const { goal, total, amazonCount } = state;
       document.getElementById('goalView').textContent = goal > 0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
       document.getElementById('totalView').textContent = fmtJPY.format(total);
 
-      // 達成率
       let percent = 0;
       if (goal > 0) percent = Math.min(100, Math.floor((total / goal) * 100));
       document.getElementById('percentView').textContent = `${percent}%`;
       document.getElementById('progressBar').style.width = `${percent}%`;
 
-      // 残り表示
       document.getElementById('remainingView').textContent =
         goal <= 0 ? '目標未設定' :
         total >= goal ? `達成！ +${fmtJPY.format(total - goal)}（超過）` :
         `あと ${fmtJPY.format(goal - total)}`;
 
-      // 日付／保存先
       document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
 
-      // ログイン表示
       if (currentUser) {
         document.getElementById('userView').textContent = `${currentUser.email}`;
         document.getElementById('loginBtn').classList.add('hidden');
@@ -232,35 +298,10 @@
         document.getElementById('logoutBtn').classList.add('hidden');
       }
 
-      // 職種チップ状態
-      document.querySelectorAll('#professionChips .chip').forEach(btn => {
-        const isActive = btn.dataset.prof === profile.profession;
-        btn.classList.toggle('ring-2', isActive);
-        btn.classList.toggle('ring-emerald-500', isActive);
-        btn.classList.toggle('bg-emerald-900/30', isActive);
-        btn.classList.toggle('border-emerald-700', isActive);
-      });
-
-      // クイック回数・ボタン再描画
       document.getElementById('quickCount').textContent = amazonCount;
-      renderQuickButtons();
-    }
 
-    function renderQuickButtons() {
-      const box = document.getElementById('quickBtns');
-      box.innerHTML = '';
-      const list = PRESETS[profile.profession] || PRESETS.delivery;
-      list.forEach(p => {
-        const btn = document.createElement('button');
-        btn.className = 'rounded-lg px-3 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition text-sm';
-        btn.textContent = p.label;
-        btn.addEventListener('click', async () => {
-          state.total += p.amount;
-          state.amazonCount += 1; // クイック加算回数として使う
-          await persist();
-        });
-        box.appendChild(btn);
-      });
+      applyTheme();
+      renderQuickButtons();
     }
 
     async function persist() {
@@ -316,6 +357,22 @@
       });
     });
 
+    // 数量チップ
+    document.querySelectorAll('.qty').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const q = Number(btn.dataset.q || 1);
+        qty = q;
+        const input = document.getElementById('qtyInput');
+        input.value = q;
+      });
+    });
+    // 任意個数
+    document.getElementById('qtyInput').addEventListener('change', (e) => {
+      const v = Number(e.target.value);
+      qty = Math.max(1, Math.min(100, Number.isFinite(v) ? v : 1));
+      e.target.value = qty;
+    });
+
     // ===== 認証 =====
     document.getElementById('loginBtn').addEventListener('click', async () => {
       await signInWithPopup(auth, provider);
@@ -327,13 +384,11 @@
     onAuthStateChanged(auth, async (user) => {
       currentUser = user || null;
       if (currentUser) {
-        // プロフィール取得（なければ作成）
         profile = await loadProfile(currentUser.uid);
         if (!profile || !profile.profession) {
           profile = { profession: 'delivery' };
           await saveProfile(currentUser.uid, profile);
         }
-        // 当日データ
         const cloud = await loadCloud(currentUser.uid);
         if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
           const local = loadLocal();
@@ -343,7 +398,6 @@
           state = cloud;
         }
       } else {
-        // 未ログイン：ローカルのプロフィールと当日データ
         profile = loadLocalProfile();
         state = loadLocal();
       }
