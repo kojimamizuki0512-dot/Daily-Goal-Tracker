@@ -172,6 +172,20 @@
         </div>
         <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
         <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
+
+        <!-- 追加: CSV出力ボタン -->
+        <div class="mt-3 flex gap-2">
+          <button id="exportCsvBtn"
+                  class="rounded-lg px-3 py-2 bg-amber-300 hover:bg-amber-400 active:bg-amber-500 transition text-sm">
+            CSVを出力
+          </button>
+          <!-- PDFは次のフェーズで実装
+          <button id="exportPdfBtn"
+                  class="rounded-lg px-3 py-2 bg-indigo-300 hover:bg-indigo-400 active:bg-indigo-500 transition text-sm">
+            PDFを出力（準備中）
+          </button>
+          -->
+        </div>
       </section>
 
       <!-- 今月の履歴（日別）＋ リセット -->
@@ -183,9 +197,7 @@
             今月の合計をリセット（目標は残す）
           </button>
         </div>
-        <ul id="monthHistory" class="divide-y divide-stone-200">
-          <!-- 日別履歴が入る（例：10/15：¥9,200） -->
-        </ul>
+        <ul id="monthHistory" class="divide-y divide-stone-200"></ul>
         <p id="historyEmpty" class="text-neutral-400 text-sm mt-2 hidden">今月の履歴がありません。</p>
       </section>
     </section>
@@ -287,7 +299,7 @@
       await setDoc(ref, { ...profile, updatedAt: serverTimestamp() }, { merge: true });
     }
 
-    // Month doc
+    // Month doc & helpers
     async function sumMonthDays(uid) {
       const daysRef = collection(db, "users", uid, "days");
       const all = await getDocs(daysRef);
@@ -323,34 +335,27 @@
     // 月履歴
     async function loadMonthHistory(uid) {
       if (!uid) {
-        // ローカル履歴
         const list = [];
         for (let i = 1; i <= 31; i++) {
           const d = `${monthId()}-${String(i).padStart(2,'0')}`;
           const raw = localStorage.getItem(`DGT:${d}`);
-          if (raw) {
-            try {
-              const o = JSON.parse(raw);
-              list.push({ day: d, total: o.total ?? 0 });
-            } catch {}
-          }
+          if (raw) { try {
+            const o = JSON.parse(raw);
+            list.push({ day: d, total: o.total ?? 0 });
+          } catch {} }
         }
         return list.sort((a,b) => b.day.localeCompare(a.day));
       }
-      // クラウド履歴
       const daysRef = collection(db, "users", uid, "days");
       const all = await getDocs(daysRef);
       const list = [];
-      all.forEach(s => {
-        if (s.id.startsWith(monthId())) list.push({ day: s.id, total: s.data().total ?? 0 });
-      });
+      all.forEach(s => { if (s.id.startsWith(monthId())) list.push({ day: s.id, total: s.data().total ?? 0 }); });
       return list.sort((a,b) => b.day.localeCompare(a.day));
     }
 
     // 月リセット
     async function resetMonthData(uid) {
       if (uid) {
-        // クラウド：当月のdaysの total/amazonCount を0に、months.monthTotalも0
         const daysRef = collection(db, "users", uid, "days");
         const all = await getDocs(daysRef);
         const batch = writeBatch(db);
@@ -367,23 +372,19 @@
         await batch.commit();
         monthState.monthTotal = 0;
       } else {
-        // ローカル：当月キーを0化
         for (let i = 1; i <= 31; i++) {
           const d = `${monthId()}-${String(i).padStart(2,'0')}`;
           const k = `DGT:${d}`;
           const raw = localStorage.getItem(k);
-          if (raw) {
-            try {
-              const o = JSON.parse(raw);
-              o.total = 0; o.amazonCount = 0;
-              localStorage.setItem(k, JSON.stringify(o));
-            } catch {}
-          }
+          if (raw) { try {
+            const o = JSON.parse(raw);
+            o.total = 0; o.amazonCount = 0;
+            localStorage.setItem(k, JSON.stringify(o));
+          } catch {} }
         }
         monthState = { ...monthState, monthTotal: 0 };
         saveLocalMonth(monthState);
       }
-      // 表示上も当日分を0に
       state.total = 0; state.amazonCount = 0;
       saveLocal(state);
     }
@@ -510,7 +511,6 @@
       renderQuickButtons();
       updateDayUI();
       updateMonthUI();
-      // タブ表示
       document.getElementById('dayView').classList.toggle('hidden', activeTab !== 'day');
       document.getElementById('monthView').classList.toggle('hidden', activeTab !== 'month');
       document.getElementById('tabDay').classList.toggle('border-b-emerald-300', activeTab === 'day');
@@ -543,6 +543,86 @@
         else saveLocalProfile(profile);
       } finally {
         updateAllUI();
+      }
+    }
+
+    // ==== CSV出力ユーティリティ ====
+    function toCSV(rows) {
+      const header = [
+        "日付(YYYY-MM-DD)",
+        "日目標(円)",
+        "日合計(円)",
+        "達成率(%)",
+        "月ID",
+      ];
+      const lines = [header.join(",")];
+      rows.sort((a,b) => a.day.localeCompare(b.day));
+      for (const r of rows) {
+        const pct = r.goal > 0 ? Math.floor((r.total / r.goal) * 100) : 0;
+        lines.push([
+          r.day,
+          r.goal ?? 0,
+          r.total ?? 0,
+          pct,
+          monthId(),
+        ].join(","));
+      }
+      const monthHeader = ["今月目標(円)","今月合計(円)","達成率(%)","対象月(YYYY-MM)"].join(",");
+      const monthLine = [
+        monthState.monthGoal ?? 0,
+        monthState.monthTotal ?? 0,
+        (monthState.monthGoal ?? 0) > 0
+          ? Math.floor(((monthState.monthTotal ?? 0)/(monthState.monthGoal ?? 0))*100)
+          : 0,
+        monthId()
+      ].join(",");
+      return [monthHeader, monthLine, "", ...lines].join("\n");
+    }
+
+    async function getMonthDaysData() {
+      const out = [];
+      if (currentUser) {
+        const daysRef = collection(db, "users", currentUser.uid, "days");
+        const snaps = await getDocs(daysRef);
+        snaps.forEach(s => {
+          if (s.id.startsWith(monthId())) {
+            const d = s.data();
+            out.push({ day: s.id, goal: d.goal ?? 0, total: d.total ?? 0 });
+          }
+        });
+      } else {
+        for (let i = 1; i <= 31; i++) {
+          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
+          const raw = localStorage.getItem(`DGT:${d}`);
+          if (!raw) continue;
+          try {
+            const o = JSON.parse(raw);
+            out.push({ day: d, goal: o.goal ?? 0, total: o.total ?? 0 });
+          } catch {}
+        }
+      }
+      return out;
+    }
+
+    function downloadCSV(filename, csvTxt) {
+      const BOM = new Uint8Array([0xEF,0xBB,0xBF]);
+      const blob = new Blob([BOM, csvTxt], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    async function exportMonthCSV() {
+      try {
+        if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
+        const rows = await getMonthDaysData();
+        const csv = toCSV(rows);
+        downloadCSV(`DailyGoalTracker_${monthId()}.csv`, csv);
+      } catch (e) {
+        console.error(e);
+        alert("CSVの作成に失敗しました。通信状況をご確認ください。");
       }
     }
 
@@ -599,7 +679,6 @@
         input.value = q;
       });
     });
-    // 任意個数
     document.getElementById('qtyInput').addEventListener('change', (e) => {
       const v = Number(e.target.value);
       qty = Math.max(1, Math.min(100, Number.isFinite(v) ? v : 1));
@@ -621,7 +700,7 @@
     (() => {
       const root = document.getElementById('appRoot');
       let x0 = null, y0 = null, t0 = 0;
-      const THRESH = 40; // px
+      const THRESH = 40;
       root.addEventListener('touchstart', (e) => {
         const t = e.touches[0];
         x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
@@ -631,11 +710,9 @@
         const t = e.changedTouches[0];
         const dx = t.clientX - x0;
         const dy = Math.abs(t.clientY - y0);
-        const dt = Date.now() - t0;
         x0 = y0 = null;
-        if (dy > 60) return;               // 縦スワイプ除外
-        if (Math.abs(dx) < THRESH) return; // しきい値
-        // 左→月次、右→日次
+        if (dy > 60) return;
+        if (Math.abs(dx) < THRESH) return;
         if (dx < 0) {
           activeTab = 'month';
           if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch(e){} }
@@ -695,7 +772,7 @@
       if (!confirm('今月の合計をリセットします。目標は残ります。よろしいですか？')) return;
       try {
         await resetMonthData(currentUser?.uid);
-        if (currentUser) await recomputeMonthFromDays(currentUser.uid); // 念のため再同期
+        if (currentUser) await recomputeMonthFromDays(currentUser.uid);
       } catch (e) {
         alert('リセット中にエラーが発生しました。通信状況を確認してください。');
         console.warn(e);
@@ -704,6 +781,12 @@
         await refreshMonthHistory();
       }
     });
+
+    // ==== CSV出力ボタン結びつけ ====
+    const exportCsvBtnEl = document.getElementById('exportCsvBtn');
+    if (exportCsvBtnEl) {
+      exportCsvBtnEl.addEventListener('click', exportMonthCSV);
+    }
 
     // ===== 他タブ更新フォロー（未ログイン時） =====
     window.addEventListener('visibilitychange', async () => {
