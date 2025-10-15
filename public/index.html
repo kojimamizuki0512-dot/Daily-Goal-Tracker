@@ -6,6 +6,8 @@
   <title>Daily Goal Tracker</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <meta name="theme-color" content="#f5f6ff">
+  <!-- PDF生成ライブラリ（フロントのみでPDF出力） -->
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     button, input, textarea { touch-action: manipulation; }
     .chip { transition: box-shadow .15s ease, transform .02s ease; }
@@ -173,18 +175,16 @@
         <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
         <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
 
-        <!-- 追加: CSV出力ボタン -->
+        <!-- 出力ボタン -->
         <div class="mt-3 flex gap-2">
           <button id="exportCsvBtn"
                   class="rounded-lg px-3 py-2 bg-amber-300 hover:bg-amber-400 active:bg-amber-500 transition text-sm">
             CSVを出力
           </button>
-          <!-- PDFは次のフェーズで実装
           <button id="exportPdfBtn"
                   class="rounded-lg px-3 py-2 bg-indigo-300 hover:bg-indigo-400 active:bg-indigo-500 transition text-sm">
-            PDFを出力（準備中）
+            PDFを出力（ベータ）
           </button>
-          -->
         </div>
       </section>
 
@@ -626,6 +626,70 @@
       }
     }
 
+    // ==== PDF出力（フロントのみ / jsPDF） ====
+    async function exportMonthPDF() {
+      try {
+        if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
+        const rows = await getMonthDaysData();
+
+        const { jsPDF } = window.jspdf;
+        const doc = new jsPDF({ unit: "pt", format: "a4" });
+
+        // タイトル
+        const title = `Daily Goal Tracker 月次レポート  ${monthId()}`;
+        doc.setFont("helvetica", "bold");
+        doc.setFontSize(16);
+        doc.text(title, 40, 50);
+
+        // サマリ
+        const goal = monthState.monthGoal ?? 0;
+        const total = monthState.monthTotal ?? 0;
+        const pct = goal > 0 ? Math.floor((total / goal) * 100) : 0;
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(12);
+        const summary = [
+          `今月目標: ${goal.toLocaleString()} 円`,
+          `今月合計: ${total.toLocaleString()} 円`,
+          `達成率  : ${pct}%`,
+          `対象月  : ${monthId()}`
+        ];
+        let y = 80;
+        summary.forEach(line => { doc.text(line, 40, y); y += 18; });
+
+        // 罫線
+        doc.setDrawColor(200);
+        doc.line(40, y + 6, 555, y + 6);
+        y += 24;
+
+        // テーブルヘッダ
+        doc.setFont("helvetica", "bold");
+        doc.text("日付", 40, y);
+        doc.text("日目標(円)", 150, y);
+        doc.text("日合計(円)", 270, y);
+        doc.text("達成率(%)", 390, y);
+        y += 16;
+        doc.setFont("helvetica", "normal");
+
+        // 行描画
+        rows.sort((a,b) => a.day.localeCompare(b.day));
+        for (const r of rows) {
+          if (y > 770) { doc.addPage(); y = 60; }
+          const rPct = r.goal > 0 ? Math.floor((r.total / r.goal) * 100) : 0;
+          doc.text(r.day, 40, y);
+          doc.text(String(r.goal ?? 0), 150, y, { align: "left" });
+          doc.text(String(r.total ?? 0), 270, y, { align: "left" });
+          doc.text(String(rPct), 390, y, { align: "left" });
+          y += 16;
+        }
+
+        doc.save(`DailyGoalTracker_${monthId()}.pdf`);
+      } catch (e) {
+        console.error(e);
+        alert("PDFの作成に失敗しました。通信状況をご確認ください。");
+      }
+    }
+
     // ===== 初期描画 =====
     updateHeaderAuthUI();
     updateAllUI();
@@ -699,11 +763,11 @@
     // ===== タブ切替（スワイプ） =====
     (() => {
       const root = document.getElementById('appRoot');
-      let x0 = null, y0 = null, t0 = 0;
+      let x0 = null, y0 = null;
       const THRESH = 40;
       root.addEventListener('touchstart', (e) => {
         const t = e.touches[0];
-        x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+        x0 = t.clientX; y0 = t.clientY;
       }, {passive:true});
       root.addEventListener('touchend', async (e) => {
         if (x0 == null) return;
@@ -782,11 +846,12 @@
       }
     });
 
-    // ==== CSV出力ボタン結びつけ ====
+    // ==== 出力ボタン結びつけ ====
     const exportCsvBtnEl = document.getElementById('exportCsvBtn');
-    if (exportCsvBtnEl) {
-      exportCsvBtnEl.addEventListener('click', exportMonthCSV);
-    }
+    if (exportCsvBtnEl) exportCsvBtnEl.addEventListener('click', exportMonthCSV);
+
+    const exportPdfBtnEl = document.getElementById('exportPdfBtn');
+    if (exportPdfBtnEl) exportPdfBtnEl.addEventListener('click', exportMonthPDF);
 
     // ===== 他タブ更新フォロー（未ログイン時） =====
     window.addEventListener('visibilitychange', async () => {
