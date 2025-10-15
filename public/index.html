@@ -11,6 +11,7 @@
     .chip { transition: box-shadow .15s ease, transform .02s ease; }
     .chip:active { transform: translateY(1px); }
     .soft-card { backdrop-filter: saturate(150%) blur(2px); }
+    .tab { border-bottom-width: 2px; }
   </style>
 </head>
 <body class="bg-stone-50 text-neutral-900 min-h-screen">
@@ -18,7 +19,7 @@
     <header class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Daily Goal Tracker</h1>
-        <p class="text-neutral-500 text-sm mt-1">今日の目標に対する進捗をサクッと管理</p>
+        <p class="text-neutral-500 text-sm mt-1">目標進捗をサクッと管理（クラウド保存対応）</p>
       </div>
       <div class="text-right">
         <p id="userView" class="text-xs text-neutral-500">未ログイン</p>
@@ -30,7 +31,7 @@
     </header>
 
     <!-- 職種テンプレ -->
-    <section class="mb-4 p-3 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+    <section class="mb-3 p-3 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
       <h2 class="font-semibold mb-3">職種テンプレート</h2>
       <div id="professionChips" class="flex gap-2">
         <button data-prof="delivery" class="chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm">配達員</button>
@@ -40,101 +41,150 @@
       <p class="text-neutral-500 text-xs mt-2">※ 選んだ職種は {ログイン時=クラウド / 未ログイン=端末} に保存</p>
     </section>
 
-    <!-- 目標設定 -->
-    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
-      <h2 class="font-semibold mb-3">目標金額</h2>
-      <div class="flex gap-2">
-        <input id="goalInput" type="number" inputmode="numeric" min="0" step="100"
-               class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
-               placeholder="例: 10000">
-        <button id="setGoalBtn"
-                class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
-          設定
-        </button>
-      </div>
-      <p id="goalView" class="text-neutral-600 text-sm mt-2">未設定</p>
-      <p id="saveHint" class="text-[11px] text-neutral-400 mt-1">未ログイン時は端末保存／ログイン中はクラウド保存</p>
-    </section>
+    <!-- タブ切り替え -->
+    <nav class="mb-3 grid grid-cols-2 gap-2">
+      <button id="tabDay"   class="tab rounded-lg px-3 py-2 bg-white border border-stone-200 shadow-sm border-b-2 border-b-emerald-300 font-medium">日次</button>
+      <button id="tabMonth" class="tab rounded-lg px-3 py-2 bg-white border border-stone-200 shadow-sm border-b-2 border-b-transparent font-medium">月次</button>
+    </nav>
 
-    <!-- 合計表示＆進捗バー -->
-    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
-      <div class="flex items-end justify-between">
-        <div>
-          <p class="text-neutral-500 text-sm">現在の合計</p>
-          <p id="totalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
+    <!-- ===== 日次ビュー ===== -->
+    <section id="dayView" class="space-y-6">
+      <!-- 目標設定（日） -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <h2 class="font-semibold mb-3">今日の目標金額</h2>
+        <div class="flex gap-2">
+          <input id="goalInput" type="number" inputmode="numeric" min="0" step="100"
+                 class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
+                 placeholder="例: 10000">
+          <button id="setGoalBtn"
+                  class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
+            設定
+          </button>
         </div>
-        <div class="text-right">
-          <p class="text-neutral-500 text-sm">達成率</p>
-          <p id="percentView" class="text-xl font-bold">0%</p>
-        </div>
-      </div>
-      <div class="mt-3 h-3 w-full bg-stone-200 rounded-full overflow-hidden">
-        <div id="progressBar" class="h-full bg-emerald-300" style="width:0%"></div>
-      </div>
-      <p id="remainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
-    </section>
+        <p id="goalView" class="text-neutral-600 text-sm mt-2">未設定</p>
+        <p class="text-[11px] text-neutral-400 mt-1">未ログイン=端末保存／ログイン中=クラウド保存</p>
+      </section>
 
-    <!-- クイック加算（テンプレ） -->
-    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="font-semibold">クイック加算（テンプレ）</h2>
-        <p class="text-neutral-700 text-sm">回数：<span id="quickCount" class="font-bold">0</span></p>
-      </div>
-
-      <!-- 配達員：数量チップ & 任意個数 -->
-      <div id="qtyArea" class="mb-3 hidden">
-        <div class="flex items-center justify-between">
-          <div class="flex flex-wrap gap-2">
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="2">×2</button>
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="5">×5</button>
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="10">×10</button>
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="20">×20</button>
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="50">×50</button>
-            <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="100">×100</button>
+      <!-- 合計表示＆進捗バー（日） -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <div class="flex items-end justify-between">
+          <div>
+            <p class="text-neutral-500 text-sm">現在の合計</p>
+            <p id="totalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
           </div>
-          <div class="flex items-center gap-2">
-            <input id="qtyInput" type="number" min="1" max="100" value="1"
-                   class="w-20 rounded bg-white border border-stone-300 px-2 py-1 text-right" />
-            <span class="text-sm text-neutral-500">個</span>
+          <div class="text-right">
+            <p class="text-neutral-500 text-sm">達成率</p>
+            <p id="percentView" class="text-xl font-bold">0%</p>
           </div>
         </div>
-        <p class="text-[11px] text-neutral-400 mt-1">クイックボタンの金額 × 個数で加算（既定=1）。チップを押すと個数欄に反映。</p>
-      </div>
+        <div class="mt-3 h-3 w-full bg-stone-200 rounded-full overflow-hidden">
+          <div id="progressBar" class="h-full bg-emerald-300" style="width:0%"></div>
+        </div>
+        <p id="remainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
+      </section>
 
-      <div id="quickBtns" class="grid grid-cols-3 gap-2">
-        <!-- 職種に応じて動的生成 -->
-      </div>
-    </section>
+      <!-- クイック加算（テンプレ） -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <div class="flex items-center justify-between mb-3">
+          <h2 class="font-semibold">クイック加算（テンプレ）</h2>
+          <p class="text-neutral-700 text-sm">回数：<span id="quickCount" class="font-bold">0</span></p>
+        </div>
 
-    <!-- 手動入力 -->
-    <section class="mb-6 p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
-      <h2 class="font-semibold mb-3">手動入力</h2>
-      <div class="flex gap-2">
-        <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
-               class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
-               placeholder="金額（円）を入力">
-        <button id="fdAddBtn"
-                class="shrink-0 rounded-lg px-4 py-2 bg-sky-300 hover:bg-sky-400 active:bg-sky-500 transition">
-          追加
+        <!-- 配達員：数量チップ & 任意個数 -->
+        <div id="qtyArea" class="mb-3 hidden">
+          <div class="flex items-center justify-between">
+            <div class="flex flex-wrap gap-2">
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="2">×2</button>
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="5">×5</button>
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="10">×10</button>
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="20">×20</button>
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="50">×50</button>
+              <button class="qty chip px-3 py-1.5 rounded-full border border-stone-300 bg-emerald-50 text-sm" data-q="100">×100</button>
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="qtyInput" type="number" min="1" max="100" value="1"
+                     class="w-20 rounded bg-white border border-stone-300 px-2 py-1 text-right" />
+              <span class="text-sm text-neutral-500">個</span>
+            </div>
+          </div>
+          <p class="text-[11px] text-neutral-400 mt-1">クイック金額 × 個数で加算（既定=1）。チップで個数欄に反映。</p>
+        </div>
+
+        <div id="quickBtns" class="grid grid-cols-3 gap-2">
+          <!-- 職種に応じて動的生成 -->
+        </div>
+      </section>
+
+      <!-- 手動入力 -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <h2 class="font-semibold mb-3">手動入力</h2>
+        <div class="flex gap-2">
+          <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
+                 class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
+                 placeholder="金額（円）を入力">
+          <button id="fdAddBtn"
+                  class="shrink-0 rounded-lg px-4 py-2 bg-sky-300 hover:bg-sky-400 active:bg-sky-500 transition">
+            追加
+          </button>
+        </div>
+      </section>
+
+      <!-- リセット（日次のみ。月次合計は変えない） -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <h2 class="font-semibold mb-3">1日の締め</h2>
+        <button id="resetBtn"
+                class="w-full rounded-lg px-4 py-3 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition">
+          本日のデータをリセット
         </button>
-      </div>
+        <p id="dateView" class="text-neutral-500 text-xs mt-2"></p>
+      </section>
     </section>
 
-    <!-- リセット -->
-    <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
-      <h2 class="font-semibold mb-3">1日の締め</h2>
-      <button id="resetBtn"
-              class="w-full rounded-lg px-4 py-3 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition">
-        本日のデータをリセット
-      </button>
-      <p id="dateView" class="text-neutral-500 text-xs mt-2"></p>
+    <!-- ===== 月次ビュー ===== -->
+    <section id="monthView" class="space-y-6 hidden">
+      <!-- 月目標設定（※ここだけで設定可能） -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <h2 class="font-semibold mb-3">今月の目標金額</h2>
+        <div class="flex gap-2">
+          <input id="monthGoalInput" type="number" inputmode="numeric" min="0" step="1000"
+                 class="w-full rounded-lg bg-white border border-stone-300 px-3 py-2"
+                 placeholder="例: 300000">
+          <button id="setMonthGoalBtn"
+                  class="shrink-0 rounded-lg px-4 py-2 bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500 transition">
+            設定
+          </button>
+        </div>
+        <p id="monthGoalView" class="text-neutral-600 text-sm mt-2">未設定</p>
+      </section>
+
+      <!-- 月合計＆進捗 -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <div class="flex items-end justify-between">
+          <div>
+            <p class="text-neutral-500 text-sm">今月の合計</p>
+            <p id="monthTotalView" class="text-4xl font-extrabold tabular-nums">¥0</p>
+          </div>
+          <div class="text-right">
+            <p class="text-neutral-500 text-sm">達成率</p>
+            <p id="monthPercentView" class="text-xl font-bold">0%</p>
+          </div>
+        </div>
+        <div class="mt-3 h-3 w-full bg-stone-200 rounded-full overflow-hidden">
+          <div id="monthProgressBar" class="h-full bg-emerald-300" style="width:0%"></div>
+        </div>
+        <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
+        <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
+      </section>
     </section>
   </main>
 
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
-    import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+    import {
+      getFirestore, doc, getDoc, setDoc, serverTimestamp,
+      collection, getDocs, increment
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     // === あなたのFirebase設定（そのまま使用）===
     const firebaseConfig = {
@@ -152,14 +202,13 @@
     const provider = new GoogleAuthProvider();
 
     // ===== テーマ色（職種ごと） =====
-    // Tailwindユーティリティをクラス付け替えで表現
     const THEME = {
       delivery: { bar: "bg-emerald-300", btn: "bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500" },
       writer:   { bar: "bg-sky-300",     btn: "bg-sky-300 hover:bg-sky-400 active:bg-sky-500" },
       creator:  { bar: "bg-violet-300",  btn: "bg-violet-300 hover:bg-violet-400 active:bg-violet-500" },
     };
 
-    // ===== プリセット定義（職種ごと） =====
+    // ===== プリセット（職種ごと） =====
     const PRESETS = {
       delivery: [
         { label: "+137円", amount: 137 },
@@ -177,7 +226,6 @@
         { label: "+500円", amount: 500 },
       ],
     };
-    const PROF_LABEL = { delivery: "配達員", writer: "ライター", creator: "クリエイター" };
 
     // ===== Local util =====
     const fmtJPY = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
@@ -185,24 +233,36 @@
       const d = new Date();
       return `DGT:${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
     };
+    const monthId = () => {
+      const d = new Date();
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    };
     const dayId = () => todayKey().split(':')[1];
 
+    // Local day
     function loadLocal() {
       const raw = localStorage.getItem(todayKey());
       if (!raw) return { goal: 0, total: 0, amazonCount: 0 };
       try { return JSON.parse(raw); } catch { return { goal: 0, total: 0, amazonCount: 0 }; }
     }
-    function saveLocal(s) {
-      localStorage.setItem(todayKey(), JSON.stringify(s));
-    }
+    function saveLocal(s) { localStorage.setItem(todayKey(), JSON.stringify(s)); }
+
+    // Local profile
     function loadLocalProfile() {
       const raw = localStorage.getItem("DGT:profile");
       if (!raw) return { profession: "delivery" };
       try { return JSON.parse(raw); } catch { return { profession: "delivery" }; }
     }
-    function saveLocalProfile(p) {
-      localStorage.setItem("DGT:profile", JSON.stringify(p));
+    function saveLocalProfile(p) { localStorage.setItem("DGT:profile", JSON.stringify(p)); }
+
+    // Local month
+    const localMonthKey = () => `DGT:MONTH:${monthId()}`;
+    function loadLocalMonth() {
+      const raw = localStorage.getItem(localMonthKey());
+      if (!raw) return { monthGoal: 0, monthTotal: 0 };
+      try { return JSON.parse(raw); } catch { return { monthGoal: 0, monthTotal: 0 }; }
     }
+    function saveLocalMonth(m) { localStorage.setItem(localMonthKey(), JSON.stringify(m)); }
 
     // ===== Firestore I/O =====
     async function loadCloud(uid) {
@@ -213,8 +273,9 @@
     }
     async function saveCloud(uid, s) {
       const ref = doc(db, "users", uid, "days", dayId());
-      await setDoc(ref, { ...s, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(ref, { ...s, date: dayId(), updatedAt: serverTimestamp() }, { merge: true });
     }
+
     async function loadProfile(uid) {
       const ref = doc(db, "users", uid, "profile", "main");
       const snap = await getDoc(ref);
@@ -226,18 +287,52 @@
       await setDoc(ref, { ...profile, updatedAt: serverTimestamp() }, { merge: true });
     }
 
-    // ===== State =====
-    let state = loadLocal();
-    let currentUser = null;
-    let profile = loadLocalProfile(); // { profession }
-    let qty = 1; // 配達テンプレの個数
+    // Month doc
+    async function loadMonth(uid) {
+      const ref = doc(db, "users", uid, "months", monthId());
+      const snap = await getDoc(ref);
+      if (snap.exists()) return snap.data();
+      // 無ければ、その月の days を集計して作る（初回だけ）
+      let sum = 0;
+      const daysRef = collection(db, "users", uid, "days");
+      const all = await getDocs(daysRef);
+      all.forEach(d => {
+        const id = d.id; // "YYYY-MM-DD"
+        if (id.startsWith(monthId())) {
+          const data = d.data();
+          sum += (data.total ?? 0);
+        }
+      });
+      const init = { monthGoal: 0, monthTotal: sum, updatedAt: serverTimestamp() };
+      await setDoc(ref, init, { merge: true });
+      return { monthGoal: 0, monthTotal: sum };
+    }
+    async function saveMonthGoal(uid, v) {
+      const ref = doc(db, "users", uid, "months", monthId());
+      await setDoc(ref, { monthGoal: v, updatedAt: serverTimestamp() }, { merge: true });
+    }
+    async function incMonthTotal(uid, delta) {
+      if (!delta) return;
+      const ref = doc(db, "users", uid, "months", monthId());
+      await setDoc(ref, { monthTotal: increment(delta), updatedAt: serverTimestamp() }, { merge: true });
+    }
 
-    // ===== UI更新 =====
-    function applyTheme() {
+    // ===== State =====
+    let state = loadLocal();                 // 日
+    let currentUser = null;
+    let profile = loadLocalProfile();        // 職種
+    let qty = 1;                             // 配達テンプレの個数
+    let monthState = loadLocalMonth();       // 月
+    let activeTab = "day";                   // "day" | "month"
+
+    // ===== UI =====
+    const THEME_APPLY = () => {
       const theme = THEME[profile.profession] || THEME.delivery;
-      const bar = document.getElementById('progressBar');
-      bar.className = `h-full ${theme.bar}`;
-      // 職種チップの見た目（選択強調）
+      // 日次バー
+      document.getElementById('progressBar').className = `h-full ${theme.bar}`;
+      // 月次バー
+      document.getElementById('monthProgressBar').className = `h-full ${theme.bar}`;
+      // 職種チップ強調
       document.querySelectorAll('#professionChips .chip').forEach(btn => {
         const active = btn.dataset.prof === profile.profession;
         btn.classList.toggle('ring-2', active);
@@ -246,7 +341,7 @@
         btn.classList.toggle('ring-sky-300',     active && profile.profession==='writer');
         btn.classList.toggle('ring-violet-300',  active && profile.profession==='creator');
       });
-    }
+    };
 
     function renderQuickButtons() {
       const box = document.getElementById('quickBtns');
@@ -259,19 +354,18 @@
         btn.textContent = p.label;
         btn.addEventListener('click', async () => {
           const q = Math.max(1, Math.min(100, qty));
-          state.total += (p.amount * q);
-          state.amazonCount += q; // クイック回数として加算
-          await persist();
+          const delta = p.amount * q;
+          state.total += delta;
+          state.amazonCount += q;
+          await persist(delta); // 月合計にdeltaを反映
         });
         box.appendChild(btn);
       });
-
-      // 配達員なら数量エリアを表示、それ以外は隠す
-      const qtyArea = document.getElementById('qtyArea');
-      qtyArea.classList.toggle('hidden', profile.profession !== 'delivery');
+      // 配達員のみ数量UI表示
+      document.getElementById('qtyArea').classList.toggle('hidden', profile.profession !== 'delivery');
     }
 
-    function updateUI() {
+    function updateDayUI() {
       const { goal, total, amazonCount } = state;
       document.getElementById('goalView').textContent = goal > 0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
       document.getElementById('totalView').textContent = fmtJPY.format(total);
@@ -287,7 +381,28 @@
         `あと ${fmtJPY.format(goal - total)}`;
 
       document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
+      document.getElementById('quickCount').textContent = amazonCount;
+    }
 
+    function updateMonthUI() {
+      const { monthGoal, monthTotal } = monthState;
+      document.getElementById('monthGoalView').textContent = monthGoal > 0 ? `目標：${fmtJPY.format(monthGoal)}` : '未設定';
+      document.getElementById('monthTotalView').textContent = fmtJPY.format(monthTotal);
+
+      let percent = 0;
+      if (monthGoal > 0) percent = Math.min(100, Math.floor((monthTotal / monthGoal) * 100));
+      document.getElementById('monthPercentView').textContent = `${percent}%`;
+      document.getElementById('monthProgressBar').style.width = `${percent}%`;
+
+      document.getElementById('monthRemainingView').textContent =
+        monthGoal <= 0 ? '目標未設定' :
+        monthTotal >= monthGoal ? `達成！ +${fmtJPY.format(monthTotal - monthGoal)}（超過）` :
+        `あと ${fmtJPY.format(monthGoal - monthTotal)}`;
+
+      document.getElementById('monthLabel').textContent = `対象月：${monthId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
+    }
+
+    function updateHeaderAuthUI() {
       if (currentUser) {
         document.getElementById('userView').textContent = `${currentUser.email}`;
         document.getElementById('loginBtn').classList.add('hidden');
@@ -297,34 +412,52 @@
         document.getElementById('loginBtn').classList.remove('hidden');
         document.getElementById('logoutBtn').classList.add('hidden');
       }
-
-      document.getElementById('quickCount').textContent = amazonCount;
-
-      applyTheme();
-      renderQuickButtons();
     }
 
-    async function persist() {
-      if (currentUser) await saveCloud(currentUser.uid, state);
-      else saveLocal(state);
-      updateUI();
+    function updateAllUI() {
+      THEME_APPLY();
+      renderQuickButtons();
+      updateDayUI();
+      updateMonthUI();
+      // タブ表示
+      document.getElementById('dayView').classList.toggle('hidden', activeTab !== 'day');
+      document.getElementById('monthView').classList.toggle('hidden', activeTab !== 'month');
+      document.getElementById('tabDay').classList.toggle('border-b-emerald-300', activeTab === 'day');
+      document.getElementById('tabMonth').classList.toggle('border-b-emerald-300', activeTab === 'month');
+    }
+
+    async function persist(deltaForMonth = 0) {
+      if (currentUser) {
+        await saveCloud(currentUser.uid, state);
+        if (deltaForMonth) await incMonthTotal(currentUser.uid, deltaForMonth);
+      } else {
+        // local day
+        saveLocal(state);
+        // local month
+        if (deltaForMonth) {
+          monthState.monthTotal = (monthState.monthTotal ?? 0) + deltaForMonth;
+          saveLocalMonth(monthState);
+        }
+      }
+      updateAllUI();
     }
 
     async function persistProfile() {
       if (currentUser) await saveProfile(currentUser.uid, profile);
       else saveLocalProfile(profile);
-      updateUI();
+      updateAllUI();
     }
 
     // ===== 初期描画 =====
-    updateUI();
+    updateHeaderAuthUI();
+    updateAllUI();
 
-    // ===== 操作ハンドラ =====
+    // ===== ハンドラ（日） =====
     document.getElementById('setGoalBtn').addEventListener('click', async () => {
       const v = parseInt(document.getElementById('goalInput').value, 10);
       state.goal = Number.isFinite(v) && v >= 0 ? v : 0;
       document.getElementById('goalInput').value = '';
-      await persist();
+      await persist(0); // 月合計は変えない
     });
 
     document.getElementById('fdAddBtn').addEventListener('click', async () => {
@@ -336,7 +469,7 @@
       }
       state.total += Math.floor(v);
       document.getElementById('fdInput').value = '';
-      await persist();
+      await persist(Math.floor(v)); // 月合計に加算
     });
 
     document.getElementById('fdInput').addEventListener('keydown', (e) => {
@@ -344,9 +477,9 @@
     });
 
     document.getElementById('resetBtn').addEventListener('click', async () => {
-      if (!confirm('本日のデータをリセットします。')) return;
+      if (!confirm('本日のデータをリセットします（※月合計は変えません）。')) return;
       state = { goal: 0, total: 0, amazonCount: 0 };
-      await persist();
+      await persist(0); // 月合計は据え置き
     });
 
     // 職種チップ
@@ -373,6 +506,10 @@
       e.target.value = qty;
     });
 
+    // ===== タブ切替 =====
+    document.getElementById('tabDay').addEventListener('click', () => { activeTab = 'day'; updateAllUI(); });
+    document.getElementById('tabMonth').addEventListener('click', () => { activeTab = 'month'; updateAllUI(); });
+
     // ===== 認証 =====
     document.getElementById('loginBtn').addEventListener('click', async () => {
       await signInWithPopup(auth, provider);
@@ -383,12 +520,11 @@
 
     onAuthStateChanged(auth, async (user) => {
       currentUser = user || null;
+      updateHeaderAuthUI();
       if (currentUser) {
-        profile = await loadProfile(currentUser.uid);
-        if (!profile || !profile.profession) {
-          profile = { profession: 'delivery' };
-          await saveProfile(currentUser.uid, profile);
-        }
+        // プロフィール
+        profile = await loadProfile(currentUser.uid) || { profession:'delivery' };
+        // 日次
         const cloud = await loadCloud(currentUser.uid);
         if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
           const local = loadLocal();
@@ -397,19 +533,38 @@
         } else {
           state = cloud;
         }
+        // 月次
+        monthState = await loadMonth(currentUser.uid);
       } else {
         profile = loadLocalProfile();
         state = loadLocal();
+        monthState = loadLocalMonth();
       }
-      updateUI();
+      updateAllUI();
     });
 
-    // 他タブ更新フォロー
+    // ===== 月次操作 =====
+    document.getElementById('setMonthGoalBtn').addEventListener('click', async () => {
+      const raw = document.getElementById('monthGoalInput').value.trim();
+      const v = parseInt(raw, 10);
+      const goal = Number.isFinite(v) && v >= 0 ? v : 0;
+      monthState.monthGoal = goal;
+      document.getElementById('monthGoalInput').value = '';
+      if (currentUser) {
+        await saveMonthGoal(currentUser.uid, goal);
+      } else {
+        saveLocalMonth(monthState);
+      }
+      updateAllUI();
+    });
+
+    // 他タブ更新フォロー（未ログイン時）
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && !currentUser) {
         state = loadLocal();
         profile = loadLocalProfile();
-        updateUI();
+        monthState = loadLocalMonth();
+        updateAllUI();
       }
     });
   </script>
