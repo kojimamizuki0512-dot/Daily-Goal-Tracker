@@ -14,10 +14,11 @@
     .chip:active { transform: translateY(1px); }
     .soft-card { backdrop-filter: saturate(150%) blur(2px); }
     .tab { border-bottom-width: 2px; }
+    .dropzone { border: 2px dashed rgba(16,185,129,.45); }
   </style>
 
-  <!-- Excel (xlsx) 出力用：SheetJS -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.20.2/dist/xlsx.full.min.js"></script>
+  <!-- OCR (Tesseract.js v4 安定版 / 端末内で実行) -->
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@v4.0.2/dist/tesseract.min.js"></script>
 </head>
 <body class="bg-emerald-50 text-neutral-900 min-h-screen">
   <main class="max-w-md mx-auto px-4 pb-28 pt-6" id="appRoot">
@@ -36,9 +37,10 @@
     </header>
 
     <!-- タブ切替 -->
-    <nav class="mb-3 grid grid-cols-2 gap-2">
+    <nav class="mb-3 grid grid-cols-3 gap-2">
       <button id="tabDay"   class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-emerald-300 font-medium">日次</button>
       <button id="tabMonth" class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-transparent font-medium">月次</button>
+      <button id="tabOCR"   class="tab rounded-lg px-3 py-2 bg-white border border-emerald-200 shadow-sm border-b-2 border-b-transparent font-medium">自動読み取り(β)</button>
     </nav>
 
     <!-- ===== 日次ビュー ===== -->
@@ -168,14 +170,10 @@
         <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
         <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
 
-        <div class="mt-3 grid grid-cols-3 gap-2">
+        <div class="mt-3 grid grid-cols-2 gap-2">
           <button id="exportCsvBtn"
                   class="rounded-lg px-3 py-2 bg-amber-300 hover:bg-amber-400 active:bg-amber-500 transition text-sm">
             CSV出力
-          </button>
-          <button id="exportXlsxBtn"
-                  class="rounded-lg px-3 py-2 bg-sky-300 hover:bg-sky-400 active:bg-sky-500 transition text-sm">
-            Excel出力
           </button>
           <button id="exportPdfCloudBtn"
                   class="rounded-lg px-3 py-2 bg-indigo-300 hover:bg-indigo-400 active:bg-indigo-500 transition text-sm">
@@ -197,6 +195,55 @@
         <p id="historyEmpty" class="text-neutral-400 text-sm mt-2 hidden">今月の履歴がありません。</p>
       </section>
     </section>
+
+    <!-- ===== 自動読み取り(β) ===== -->
+    <section id="ocrView" class="space-y-4 hidden">
+      <section class="p-4 rounded-xl soft-card bg-white/90 border border-emerald-200 shadow-sm">
+        <h2 class="font-semibold mb-2">スクショ／レシートから自動読み取り</h2>
+
+        <!-- ルール（無料3件まで） -->
+        <div class="mb-3">
+          <details class="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2">
+            <summary class="cursor-pointer text-sm font-medium">自動分類ルール（無料は3件まで）</summary>
+            <div class="mt-2 space-y-2">
+              <div class="flex gap-2">
+                <input id="ruleKeyword" class="flex-1 border border-emerald-200 rounded px-2 py-1" placeholder="キーワード（例: Uber, ガソリン）">
+                <select id="ruleType" class="border border-emerald-200 rounded px-2 py-1">
+                  <option value="income">売上</option>
+                  <option value="expense">経費</option>
+                </select>
+                <button id="addRuleBtn" class="bg-emerald-300 hover:bg-emerald-400 px-3 rounded">追加</button>
+              </div>
+              <ul id="ruleList" class="text-sm"></ul>
+            </div>
+          </details>
+        </div>
+
+        <!-- ドロップゾーン -->
+        <div id="dropzone"
+             class="dropzone rounded-lg bg-white px-4 py-6 text-center text-neutral-600">
+          画像をドラッグ＆ドロップ、または
+          <label class="text-emerald-600 underline cursor-pointer">
+            ファイルを選択<input id="imgInput" type="file" accept="image/*" class="hidden">
+          </label>
+          <div class="text-xs text-neutral-400 mt-1">対応: スクショ・レシート（日本語/英語）</div>
+        </div>
+
+        <!-- 進捗 -->
+        <div id="ocrStatus" class="text-sm text-neutral-500 mt-2 hidden">認識中…</div>
+
+        <!-- 結果一覧 -->
+        <div id="ocrResultsWrap" class="hidden mt-3">
+          <h3 class="font-medium mb-2">検出結果（確認して「反映する」を押す）</h3>
+          <ul id="ocrResults" class="space-y-2"></ul>
+          <div class="mt-3 flex gap-2">
+            <button id="applyIncomeBtn" class="flex-1 rounded-lg px-3 py-2 bg-emerald-300 hover:bg-emerald-400">売上に反映</button>
+            <button id="clearResultsBtn" class="rounded-lg px-3 py-2 bg-neutral-300 hover:bg-neutral-400">クリア</button>
+          </div>
+          <p class="text-xs text-neutral-400 mt-1">※ 経費は将来の確定申告モジュールで活用（今は売上のみ加算）</p>
+        </div>
+      </section>
+    </section>
   </main>
 
   <!-- Firebase（v11系） & Functions -->
@@ -206,7 +253,7 @@
     import { getFirestore, doc, getDoc, setDoc, serverTimestamp, collection, getDocs, increment, writeBatch } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
     import { getFunctions, httpsCallable } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-functions.js";
 
-    // === Firebase設定（storageBucketは appspot.com に寄せるが、今回は未使用） ===
+    // === Firebase設定（storageBucketは appspot.com。今回は未使用） ===
     const firebaseConfig = {
       apiKey: "AIzaSyDwt4EL1tLDehbGvluSf3-SNRKfvbzjQaU",
       authDomain: "daily-goal-tracker-900c0.firebaseapp.com",
@@ -219,7 +266,7 @@
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
-    const functions = getFunctions(app, "asia-northeast1"); // Functions(東京)
+    const functions = getFunctions(app, "asia-northeast1");
 
     // ===== Util =====
     const fmtJPY = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
@@ -249,6 +296,14 @@
       try { return JSON.parse(raw); } catch { return { monthGoal: 0, monthTotal: 0 }; }
     }
     function saveLocalMonth(m) { localStorage.setItem(localMonthKey(), JSON.stringify(m)); }
+
+    // ===== Local（ルール）=====
+    function loadRules() {
+      const raw = localStorage.getItem("DGT:rules");
+      if (!raw) return [];
+      try { return JSON.parse(raw); } catch { return []; }
+    }
+    function saveRules(rules) { localStorage.setItem("DGT:rules", JSON.stringify(rules)); }
 
     // ===== Firestore（日）=====
     async function loadCloud(uid) {
@@ -352,7 +407,9 @@
     let currentUser = null;
     let qty = 1;                             // 配達テンプレの個数
     let monthState = loadLocalMonth();       // 月
-    let activeTab = "day";                   // "day" | "month"
+    let activeTab = "day";                   // "day" | "month" | "ocr"
+    let rules = loadRules();                 // 自動分類ルール
+    let ocrItems = [];                       // { text, amount, type: 'income'|'expense', checked }
 
     // ===== UI描画 =====
     function renderQuickButtons() {
@@ -419,19 +476,35 @@
       document.getElementById('monthLabel').textContent = `対象月：${monthId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
     }
 
-    async function refreshMonthHistory() {
-      const list = await loadMonthHistory(currentUser?.uid);
-      renderMonthHistory(list);
+    function renderRules() {
+      const ul = document.getElementById('ruleList');
+      ul.innerHTML = '';
+      rules.forEach((r, idx) => {
+        const li = document.createElement('li');
+        li.className = "flex items-center justify-between gap-2";
+        li.innerHTML = `
+          <span class="px-2 py-1 rounded bg-emerald-100 text-emerald-700">${r.keyword}</span>
+          <span class="text-sm">${r.type === 'income' ? '売上' : '経費'}</span>
+          <button class="text-xs text-rose-600 underline">削除</button>
+        `;
+        li.querySelector('button').addEventListener('click', () => {
+          rules.splice(idx,1); saveRules(rules); renderRules();
+        });
+        ul.appendChild(li);
+      });
     }
 
     function updateAllUI() {
       renderQuickButtons();
       updateDayUI();
       updateMonthUI();
+      renderRules();
       document.getElementById('dayView').classList.toggle('hidden', activeTab !== 'day');
       document.getElementById('monthView').classList.toggle('hidden', activeTab !== 'month');
+      document.getElementById('ocrView').classList.toggle('hidden', activeTab !== 'ocr');
       document.getElementById('tabDay').classList.toggle('border-b-emerald-300', activeTab === 'day');
       document.getElementById('tabMonth').classList.toggle('border-b-emerald-300', activeTab === 'month');
+      document.getElementById('tabOCR').classList.toggle('border-b-emerald-300', activeTab === 'ocr');
     }
 
     async function persist(deltaForMonth = 0) {
@@ -451,6 +524,11 @@
         updateAllUI();
         if (activeTab === 'month') await refreshMonthHistory();
       }
+    }
+
+    async function refreshMonthHistory() {
+      const list = await loadMonthHistory(currentUser?.uid);
+      renderMonthHistory(list);
     }
 
     // ===== 初期描画 =====
@@ -521,13 +599,14 @@
       await refreshMonthHistory();
     });
 
-    // ===== 月次タブ =====
+    // ===== タブ =====
     document.getElementById('tabDay').addEventListener('click', () => { activeTab = 'day'; updateAllUI(); });
     document.getElementById('tabMonth').addEventListener('click', async () => {
       activeTab = 'month';
       if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch(e){} }
       updateAllUI(); await refreshMonthHistory();
     });
+    document.getElementById('tabOCR').addEventListener('click', () => { activeTab = 'ocr'; updateAllUI(); });
 
     document.getElementById('setMonthGoalBtn').addEventListener('click', async () => {
       const raw = document.getElementById('monthGoalInput').value.trim();
@@ -552,7 +631,7 @@
       }
     });
 
-    // ==== CSV / Excel / PDF 出力 ====
+    // ==== CSV / PDF 出力 ====
     async function getMonthDaysData() {
       const out = [];
       if (currentUser) {
@@ -611,38 +690,6 @@
       } catch (e) { console.error(e); alert("CSVの作成に失敗しました。"); }
     }
 
-    async function exportMonthXLSX() {
-      try {
-        if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
-        const rows = await getMonthDaysData();
-        // Workbook
-        const wb = XLSX.utils.book_new();
-
-        // Summary シート
-        const sumData = [
-          ["対象月", monthId()],
-          ["今月の目標(円)", monthState.monthGoal ?? 0],
-          ["今月の合計(円)",  monthState.monthTotal ?? 0],
-          ["達成率(%)", (monthState.monthGoal ?? 0) > 0 ? Math.floor(((monthState.monthTotal ?? 0)/(monthState.monthGoal ?? 0))*100) : 0],
-        ];
-        const wsSummary = XLSX.utils.aoa_to_sheet(sumData);
-        wsSummary["!cols"] = [{wch:16},{wch:18}];
-        XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-
-        // Days シート
-        const dayRows = [["日付(YYYY-MM-DD)","日目標(円)","日合計(円)","達成率(%)"]];
-        rows.forEach(r => {
-          const pct = r.goal > 0 ? Math.floor((r.total / r.goal) * 100) : 0;
-          dayRows.push([r.day, r.goal ?? 0, r.total ?? 0, pct]);
-        });
-        const wsDays = XLSX.utils.aoa_to_sheet(dayRows);
-        wsDays["!cols"] = [{wch:14},{wch:12},{wch:12},{wch:10}];
-        XLSX.utils.book_append_sheet(wb, wsDays, "Days");
-
-        XLSX.writeFile(wb, `DailyGoalTracker_${monthId()}.xlsx`);
-      } catch (e) { console.error(e); alert("Excelの作成に失敗しました。"); }
-    }
-
     async function exportMonthPDFCloud() {
       if (!currentUser) { alert('PDF（クラウド生成）はログインが必要です。'); return; }
       try {
@@ -671,10 +718,134 @@
       } catch (e) { console.error(e); alert(e?.message || 'PDF生成に失敗しました。'); }
     }
 
-    // ボタン結びつけ
     document.getElementById('exportCsvBtn')?.addEventListener('click', exportMonthCSV);
-    document.getElementById('exportXlsxBtn')?.addEventListener('click', exportMonthXLSX);
     document.getElementById('exportPdfCloudBtn')?.addEventListener('click', exportMonthPDFCloud);
+
+    // ===== OCR: ドラッグ&ドロップ + ファイル選択 =====
+    const dz = document.getElementById('dropzone');
+    const inputImg = document.getElementById('imgInput');
+    const statusEl = document.getElementById('ocrStatus');
+    const resultsWrap = document.getElementById('ocrResultsWrap');
+    const resultsList = document.getElementById('ocrResults');
+
+    function showStatus(msg, show=true) {
+      statusEl.textContent = msg;
+      statusEl.classList.toggle('hidden', !show);
+    }
+
+    function classifyByRules(text) {
+      const low = text.toLowerCase();
+      for (const r of rules) {
+        if (low.includes(r.keyword.toLowerCase())) return r.type; // 'income'|'expense'
+      }
+      // 既定のキーワード群
+      const incomeKeys = ["uber", "ウーバー", "eats", "amazon", "flex", "出前館", "menu", "wolt", "didi", "配達", "報酬", "売上"];
+      const expenseKeys = ["ガソリン","燃料","交通","高速","駐車","駐輪","洗車","メンテ","整備","保険","通信","スマホ","手数料","振込手数料"];
+      if (incomeKeys.some(k => low.includes(k))) return "income";
+      if (expenseKeys.some(k => low.includes(k))) return "expense";
+      return "income"; // デフォルトは売上に寄せる（手戻りを減らす）
+    }
+
+    function parseAmounts(text) {
+      // 金額抽出: ¥/￥/数値（カンマ）を対象。例: 1,234 / ￥1,234 / 1234円
+      const lines = text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      const items = [];
+      for (const line of lines) {
+        // 数字抽出
+        const m = line.match(/(?:¥|￥)?\s*([0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.\d+)?\s*(?:円)?/);
+        if (!m) continue;
+        const raw = m[1].replace(/,/g,'');
+        const amount = parseInt(raw,10);
+        if (!Number.isFinite(amount) || amount<=0) continue;
+        const type = classifyByRules(line);
+        items.push({ text: line, amount, type, checked: type==='income' });
+      }
+      // 重複/極端に小さいノイズは除外（例: 1, 10 など）
+      return items.filter(x => x.amount >= 50);
+    }
+
+    function renderOCRItems() {
+      resultsList.innerHTML = '';
+      ocrItems.forEach((it, idx) => {
+        const li = document.createElement('li');
+        li.className = "rounded-lg border border-emerald-200 p-2 bg-emerald-50";
+        li.innerHTML = `
+          <div class="flex items-center justify-between gap-2">
+            <div class="text-sm">
+              <div class="font-medium">${it.type==='income' ? '売上' : '経費'}：${fmtJPY.format(it.amount)}</div>
+              <div class="text-neutral-600 text-xs break-all">${it.text}</div>
+            </div>
+            <div class="flex items-center gap-2">
+              <label class="text-xs flex items-center gap-1"><input type="checkbox" ${it.checked?'checked':''}> 反映</label>
+              <select class="text-xs border border-emerald-200 rounded px-1 py-0.5">
+                <option value="income" ${it.type==='income'?'selected':''}>売上</option>
+                <option value="expense" ${it.type==='expense'?'selected':''}>経費</option>
+              </select>
+            </div>
+          </div>
+        `;
+        const chk = li.querySelector('input[type="checkbox"]');
+        const sel = li.querySelector('select');
+        chk.addEventListener('change', e => { ocrItems[idx].checked = e.target.checked; });
+        sel.addEventListener('change', e => { ocrItems[idx].type = e.target.value; });
+        resultsList.appendChild(li);
+      });
+      resultsWrap.classList.toggle('hidden', ocrItems.length===0);
+    }
+
+    async function runOCRFromFile(file) {
+      showStatus('認識中…（1枚あたり数秒）', true);
+      try {
+        const { data } = await Tesseract.recognize(file, 'jpn+eng', {
+          tessedit_pageseg_mode: Tesseract.PSM.AUTO,
+          logger: m => { /* console.log(m) */ }
+        });
+        const text = data?.text || '';
+        ocrItems = parseAmounts(text);
+        renderOCRItems();
+      } catch (e) {
+        console.error(e); alert('OCRに失敗しました。画像を変えてお試しください。');
+      } finally {
+        showStatus('', false);
+      }
+    }
+
+    // D&D
+    dz.addEventListener('dragover', (e) => { e.preventDefault(); dz.classList.add('bg-emerald-100'); });
+    dz.addEventListener('dragleave', () => dz.classList.remove('bg-emerald-100'));
+    dz.addEventListener('drop', (e) => {
+      e.preventDefault(); dz.classList.remove('bg-emerald-100');
+      const f = e.dataTransfer.files?.[0]; if (f) runOCRFromFile(f);
+    });
+    inputImg.addEventListener('change', (e) => {
+      const f = e.target.files?.[0]; if (f) runOCRFromFile(f);
+      inputImg.value = '';
+    });
+
+    // 反映ボタン
+    document.getElementById('applyIncomeBtn').addEventListener('click', async () => {
+      const add = ocrItems.filter(i => i.checked && i.type==='income').reduce((s,i)=>s+i.amount,0);
+      if (add <= 0) { alert('反映対象の売上がありません。'); return; }
+      state.total += add;
+      await persist(add);
+      alert(`売上に ${fmtJPY.format(add)} を反映しました。`);
+    });
+    document.getElementById('clearResultsBtn').addEventListener('click', () => { ocrItems = []; renderOCRItems(); });
+
+    // ルール追加（無料は3件まで）
+    document.getElementById('addRuleBtn').addEventListener('click', () => {
+      const kw = document.getElementById('ruleKeyword').value.trim();
+      const tp = document.getElementById('ruleType').value;
+      if (!kw) return;
+      if (rules.length >= 3) { alert('無料プランではルールは3件までです。'); return; }
+      rules.push({ keyword: kw, type: tp });
+      saveRules(rules);
+      document.getElementById('ruleKeyword').value = '';
+      renderRules();
+      // 既存OCR結果に再適用
+      ocrItems = ocrItems.map(it => ({ ...it, type: classifyByRules(it.text) }));
+      renderOCRItems();
+    });
   </script>
 </body>
 </html>
