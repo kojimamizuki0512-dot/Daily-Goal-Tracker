@@ -183,7 +183,7 @@
           </button>
           <button id="exportPdfBtn"
                   class="rounded-lg px-3 py-2 bg-indigo-300 hover:bg-indigo-400 active:bg-indigo-500 transition text-sm">
-            PDFを出力（ベータ）
+            PDFを出力（英語ラベル）
           </button>
         </div>
       </section>
@@ -626,7 +626,7 @@
       }
     }
 
-    // ==== PDF出力（フロントのみ / jsPDF） ====
+    // ==== PDF出力（フロントのみ / jsPDF：英語ラベル） ====
     async function exportMonthPDF() {
       try {
         if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch {} }
@@ -635,13 +635,13 @@
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ unit: "pt", format: "a4" });
 
-        // タイトル
-        const title = `Daily Goal Tracker 月次レポート  ${monthId()}`;
+        // Title (ASCII only)
+        const title = `Daily Goal Tracker - Monthly Report  ${monthId()}`;
         doc.setFont("helvetica", "bold");
         doc.setFontSize(16);
         doc.text(title, 40, 50);
 
-        // サマリ
+        // Summary (ASCII only)
         const goal = monthState.monthGoal ?? 0;
         const total = monthState.monthTotal ?? 0;
         const pct = goal > 0 ? Math.floor((total / goal) * 100) : 0;
@@ -649,37 +649,36 @@
         doc.setFont("helvetica", "normal");
         doc.setFontSize(12);
         const summary = [
-          `今月目標: ${goal.toLocaleString()} 円`,
-          `今月合計: ${total.toLocaleString()} 円`,
-          `達成率  : ${pct}%`,
-          `対象月  : ${monthId()}`
+          `Monthly Goal (JPY): ${goal.toLocaleString()}`,
+          `Monthly Total (JPY): ${total.toLocaleString()}`,
+          `Progress: ${pct}%`,
+          `Month: ${monthId()}`
         ];
         let y = 80;
         summary.forEach(line => { doc.text(line, 40, y); y += 18; });
 
-        // 罫線
         doc.setDrawColor(200);
         doc.line(40, y + 6, 555, y + 6);
         y += 24;
 
-        // テーブルヘッダ
+        // Table header (ASCII)
         doc.setFont("helvetica", "bold");
-        doc.text("日付", 40, y);
-        doc.text("日目標(円)", 150, y);
-        doc.text("日合計(円)", 270, y);
-        doc.text("達成率(%)", 390, y);
+        doc.text("Date", 40, y);
+        doc.text("Daily Goal (JPY)", 150, y);
+        doc.text("Daily Total (JPY)", 300, y);
+        doc.text("Achv. (%)", 460, y);
         y += 16;
         doc.setFont("helvetica", "normal");
 
-        // 行描画
+        // Rows
         rows.sort((a,b) => a.day.localeCompare(b.day));
         for (const r of rows) {
           if (y > 770) { doc.addPage(); y = 60; }
           const rPct = r.goal > 0 ? Math.floor((r.total / r.goal) * 100) : 0;
           doc.text(r.day, 40, y);
-          doc.text(String(r.goal ?? 0), 150, y, { align: "left" });
-          doc.text(String(r.total ?? 0), 270, y, { align: "left" });
-          doc.text(String(rPct), 390, y, { align: "left" });
+          doc.text(String(r.goal ?? 0), 150, y);
+          doc.text(String(r.total ?? 0), 300, y);
+          doc.text(String(rPct), 460, y);
           y += 16;
         }
 
