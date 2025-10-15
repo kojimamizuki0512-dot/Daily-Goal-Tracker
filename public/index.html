@@ -26,6 +26,18 @@
       </div>
     </header>
 
+    <!-- 職種テンプレ（見栄えが大きく変わる新UI） -->
+    <section class="mb-4 p-3 rounded-xl bg-neutral-900/70 border border-neutral-800">
+      <h2 class="font-semibold mb-3">職種テンプレート</h2>
+      <div id="professionChips" class="flex gap-2">
+        <!-- 動的に選択状態を付与 -->
+        <button data-prof="delivery" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">配達員</button>
+        <button data-prof="writer" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">ライター</button>
+        <button data-prof="creator" class="chip px-3 py-1.5 rounded-full border border-neutral-700 bg-neutral-800 text-sm">クリエイター</button>
+      </div>
+      <p class="text-neutral-500 text-xs mt-2">※ 選んだ職種は {ログイン時=クラウド / 未ログイン=端末} に保存されます</p>
+    </section>
+
     <!-- 目標設定 -->
     <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
       <h2 class="font-semibold mb-3">目標金額</h2>
@@ -60,21 +72,20 @@
       <p id="remainingView" class="text-neutral-300 text-sm mt-2">目標未設定</p>
     </section>
 
-    <!-- Amazon +137円 カウンター -->
+    <!-- クイック加算（テンプレ） ※旧Amazonセクション置換 -->
     <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
-      <h2 class="font-semibold mb-3">Amazon（+137円/タップ）</h2>
-      <div class="flex items-center justify-between">
-        <p class="text-neutral-300">配達個数：<span id="amazonCount" class="font-bold">0</span> 回</p>
-        <button id="amazonPlusBtn"
-                class="rounded-lg px-4 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition">
-          +137円
-        </button>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="font-semibold">クイック加算（テンプレ）</h2>
+        <p class="text-neutral-300 text-sm">回数：<span id="quickCount" class="font-bold">0</span></p>
+      </div>
+      <div id="quickBtns" class="grid grid-cols-3 gap-2">
+        <!-- 職種に応じて動的生成 -->
       </div>
     </section>
 
-    <!-- フードデリバリー 金額入力 -->
+    <!-- フードデリバリー 金額入力（手動） -->
     <section class="mb-6 p-4 rounded-xl bg-neutral-900/70 border border-neutral-800">
-      <h2 class="font-semibold mb-3">フードデリバリー（手動入力）</h2>
+      <h2 class="font-semibold mb-3">手動入力</h2>
       <div class="flex gap-2">
         <input id="fdInput" type="number" inputmode="decimal" min="0" step="1"
                class="w-full rounded-lg bg-neutral-800 border border-neutral-700 px-3 py-2"
@@ -102,7 +113,7 @@
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import { getFirestore, doc, getDoc, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // === あなたのFirebase設定 ===
+    // === あなたのFirebase設定（そのまま使用）===
     const firebaseConfig = {
       apiKey: "AIzaSyDwt4EL1tLDehbGvluSf3-SNRKfvbzjQaU",
       authDomain: "daily-goal-tracker-900c0.firebaseapp.com",
@@ -117,6 +128,26 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
+    // ===== プリセット定義（職種ごと） =====
+    const PRESETS = {
+      delivery: [
+        { label: "+137円", amount: 137 },
+        { label: "+500円", amount: 500 },
+        { label: "+1,000円", amount: 1000 },
+      ],
+      writer: [
+        { label: "+1,000円", amount: 1000 },
+        { label: "+3,000円", amount: 3000 },
+        { label: "+5,000円", amount: 5000 },
+      ],
+      creator: [
+        { label: "+5,000円", amount: 5000 },
+        { label: "+10,000円", amount: 10000 },
+        { label: "+500円", amount: 500 },
+      ],
+    };
+    const PROF_LABEL = { delivery: "配達員", writer: "ライター", creator: "クリエイター" };
+
     // ===== Local util =====
     const fmtJPY = new Intl.NumberFormat('ja-JP', { style: 'currency', currency: 'JPY', maximumFractionDigits: 0 });
     const todayKey = () => {
@@ -127,13 +158,22 @@
 
     function loadLocal() {
       const raw = localStorage.getItem(todayKey());
-      if (!raw) return { goal: 0, total: 0, amazonCount: 0 };
+      if (!raw) return { goal: 0, total: 0, amazonCount: 0 }; // amazonCount を「クイック回数」に流用
       try { return JSON.parse(raw); } catch { return { goal: 0, total: 0, amazonCount: 0 }; }
     }
     function saveLocal(s) {
       localStorage.setItem(todayKey(), JSON.stringify(s));
     }
+    function loadLocalProfile() {
+      const raw = localStorage.getItem("DGT:profile");
+      if (!raw) return { profession: "delivery" };
+      try { return JSON.parse(raw); } catch { return { profession: "delivery" }; }
+    }
+    function saveLocalProfile(p) {
+      localStorage.setItem("DGT:profile", JSON.stringify(p));
+    }
 
+    // ===== Firestore I/O =====
     async function loadCloud(uid) {
       const ref = doc(db, "users", uid, "days", dayId());
       const snap = await getDoc(ref);
@@ -144,25 +184,44 @@
       const ref = doc(db, "users", uid, "days", dayId());
       await setDoc(ref, { ...s, updatedAt: serverTimestamp() }, { merge: true });
     }
+    async function loadProfile(uid) {
+      const ref = doc(db, "users", uid, "profile", "main");
+      const snap = await getDoc(ref);
+      if (snap.exists()) return snap.data(); // { profession }
+      return { profession: "delivery" };
+    }
+    async function saveProfile(uid, profile) {
+      const ref = doc(db, "users", uid, "profile", "main");
+      await setDoc(ref, { ...profile, updatedAt: serverTimestamp() }, { merge: true });
+    }
 
-    // ===== State & UI =====
+    // ===== State =====
     let state = loadLocal();
     let currentUser = null;
+    let profile = loadLocalProfile(); // { profession }
 
+    // ===== UI更新 =====
     function updateUI() {
       const { goal, total, amazonCount } = state;
       document.getElementById('goalView').textContent = goal > 0 ? `目標：${fmtJPY.format(goal)}` : '未設定';
       document.getElementById('totalView').textContent = fmtJPY.format(total);
-      document.getElementById('amazonCount').textContent = amazonCount;
+
+      // 達成率
       let percent = 0;
       if (goal > 0) percent = Math.min(100, Math.floor((total / goal) * 100));
       document.getElementById('percentView').textContent = `${percent}%`;
       document.getElementById('progressBar').style.width = `${percent}%`;
+
+      // 残り表示
       document.getElementById('remainingView').textContent =
         goal <= 0 ? '目標未設定' :
         total >= goal ? `達成！ +${fmtJPY.format(total - goal)}（超過）` :
         `あと ${fmtJPY.format(goal - total)}`;
+
+      // 日付／保存先
       document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
+
+      // ログイン表示
       if (currentUser) {
         document.getElementById('userView').textContent = `${currentUser.email}`;
         document.getElementById('loginBtn').classList.add('hidden');
@@ -172,6 +231,36 @@
         document.getElementById('loginBtn').classList.remove('hidden');
         document.getElementById('logoutBtn').classList.add('hidden');
       }
+
+      // 職種チップ状態
+      document.querySelectorAll('#professionChips .chip').forEach(btn => {
+        const isActive = btn.dataset.prof === profile.profession;
+        btn.classList.toggle('ring-2', isActive);
+        btn.classList.toggle('ring-emerald-500', isActive);
+        btn.classList.toggle('bg-emerald-900/30', isActive);
+        btn.classList.toggle('border-emerald-700', isActive);
+      });
+
+      // クイック回数・ボタン再描画
+      document.getElementById('quickCount').textContent = amazonCount;
+      renderQuickButtons();
+    }
+
+    function renderQuickButtons() {
+      const box = document.getElementById('quickBtns');
+      box.innerHTML = '';
+      const list = PRESETS[profile.profession] || PRESETS.delivery;
+      list.forEach(p => {
+        const btn = document.createElement('button');
+        btn.className = 'rounded-lg px-3 py-3 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition text-sm';
+        btn.textContent = p.label;
+        btn.addEventListener('click', async () => {
+          state.total += p.amount;
+          state.amazonCount += 1; // クイック加算回数として使う
+          await persist();
+        });
+        box.appendChild(btn);
+      });
     }
 
     async function persist() {
@@ -180,20 +269,20 @@
       updateUI();
     }
 
+    async function persistProfile() {
+      if (currentUser) await saveProfile(currentUser.uid, profile);
+      else saveLocalProfile(profile);
+      updateUI();
+    }
+
+    // ===== 初期描画 =====
     updateUI();
 
-    // ===== Handlers =====
+    // ===== 操作ハンドラ =====
     document.getElementById('setGoalBtn').addEventListener('click', async () => {
       const v = parseInt(document.getElementById('goalInput').value, 10);
       state.goal = Number.isFinite(v) && v >= 0 ? v : 0;
       document.getElementById('goalInput').value = '';
-      await persist();
-    });
-
-    const STEP = 137;
-    document.getElementById('amazonPlusBtn').addEventListener('click', async () => {
-      state.total += STEP;
-      state.amazonCount += 1;
       await persist();
     });
 
@@ -219,7 +308,15 @@
       await persist();
     });
 
-    // ===== Auth =====
+    // 職種チップ
+    document.querySelectorAll('#professionChips .chip').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        profile.profession = btn.dataset.prof;
+        await persistProfile();
+      });
+    });
+
+    // ===== 認証 =====
     document.getElementById('loginBtn').addEventListener('click', async () => {
       await signInWithPopup(auth, provider);
     });
@@ -230,6 +327,13 @@
     onAuthStateChanged(auth, async (user) => {
       currentUser = user || null;
       if (currentUser) {
+        // プロフィール取得（なければ作成）
+        profile = await loadProfile(currentUser.uid);
+        if (!profile || !profile.profession) {
+          profile = { profession: 'delivery' };
+          await saveProfile(currentUser.uid, profile);
+        }
+        // 当日データ
         const cloud = await loadCloud(currentUser.uid);
         if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
           const local = loadLocal();
@@ -239,14 +343,18 @@
           state = cloud;
         }
       } else {
+        // 未ログイン：ローカルのプロフィールと当日データ
+        profile = loadLocalProfile();
         state = loadLocal();
       }
       updateUI();
     });
 
+    // 他タブ更新フォロー
     window.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && !currentUser) {
         state = loadLocal();
+        profile = loadLocalProfile();
         updateUI();
       }
     });
