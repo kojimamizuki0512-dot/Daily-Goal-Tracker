@@ -1,89 +1,61 @@
 /* eslint-disable */
-const admin = require("firebase-admin");
-
-// v2 API
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const { setGlobalOptions } = require("firebase-functions/v2");
-
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
-// ====== バケットを明示（appspot.com を必ず使う） ======
-const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
-const defaultBucket = `${projectId}.appspot.com`;
-
-admin.initializeApp({ storageBucket: defaultBucket });
-
-// リージョン/リソース（PDF用途で余裕めに）
+// Functions 共通設定（東京 / 余裕めのリソース）
 setGlobalOptions({
   region: "asia-northeast1",
   timeoutSeconds: 300,
   memory: "1GiB",
 });
 
-const BUCKET = admin.storage().bucket();
-
-// Puppeteer の実行モードを環境に合わせて指定
+// 実行モード
 chromium.setHeadlessMode = true;
 chromium.setGraphicsMode = false;
 
-async function buildMonthlyHtml(uid, monthId) {
-  const db = admin.firestore();
-  const monthSnap = await db.doc(`users/${uid}/months/${monthId}`).get();
-  const month = monthSnap.exists ? monthSnap.data() : { monthGoal: 0, monthTotal: 0 };
-
-  const daysSnaps = await db.collection(`users/${uid}/days`).get();
-  const rows = [];
-  daysSnaps.forEach((doc) => {
-    if (doc.id.startsWith(monthId)) {
-      const d = doc.data();
-      const goal = d.goal || 0;
-      const total = d.total || 0;
-      const pct = goal > 0 ? Math.floor((total / goal) * 100) : 0;
-      rows.push({ day: doc.id, goal, total, pct });
-    }
-  });
-  rows.sort((a, b) => a.day.localeCompare(b.day));
+// ---- レポートHTML組み立て（フロントから渡すデータをそのまま使う） ----
+function buildMonthlyHtml(payload) {
+  const { monthId, monthGoal = 0, monthTotal = 0, rows = [] } = payload;
 
   const style = `
     <style>
       @page { size: A4; margin: 20mm 12mm; }
-      body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; }
+      body { font-family:-apple-system,BlinkMacSystemFont,"Noto Sans JP","Segoe UI",Roboto,Helvetica,Arial,sans-serif; margin:0; }
       h1 { font-size: 20px; margin: 20px 12px 12px; }
-      .muted { color:#555; font-size: 13px; line-height:1.6; padding: 0 12px; }
-      hr { border: none; border-top: 1px solid #ddd; margin: 12px 0 16px; }
+      .muted { color:#555; font-size:13px; line-height:1.6; padding:0 12px; }
+      hr { border:none; border-top:1px solid #ddd; margin:12px 0 16px; }
       table { width:100%; border-collapse: collapse; font-size:13px; }
-      th, td { text-align:left; padding:8px 6px; border-bottom:1px solid #eee; }
+      th,td { text-align:left; padding:8px 6px; border-bottom:1px solid #eee; }
       th { background:#fafafa; font-weight:600; }
       .right { text-align:right; }
     </style>
   `;
 
-  let rowsHtml = rows.map(r =>
-    `<tr>
+  let rowsHtml = rows.map(r => `
+    <tr>
       <td>${r.day}</td>
-      <td class="right">${r.goal.toLocaleString()}</td>
-      <td class="right">${r.total.toLocaleString()}</td>
-      <td class="right">${r.pct}</td>
-    </tr>`).join("");
+      <td class="right">${(r.goal||0).toLocaleString()}</td>
+      <td class="right">${(r.total||0).toLocaleString()}</td>
+      <td class="right">${r.pct||0}</td>
+    </tr>
+  `).join("");
 
   if (rows.length === 0) {
     rowsHtml = `<tr><td colspan="4" class="muted">今月のデータがありません。</td></tr>`;
   }
 
-  const pct = (month.monthGoal || 0) > 0
-    ? Math.floor((month.monthTotal || 0) / (month.monthGoal || 1) * 100)
-    : 0;
+  const pct = monthGoal > 0 ? Math.floor((monthTotal || 0) / monthGoal * 100) : 0;
 
   return `
     <!doctype html>
-    <html lang="ja">
-    <head><meta charset="utf-8">${style}</head>
+    <html lang="ja"><head><meta charset="utf-8">${style}</head>
     <body>
       <h1>Daily Goal Tracker 月次レポート（${monthId}）</h1>
       <div class="muted">
-        <div>今月の目標: ${(month.monthGoal || 0).toLocaleString()} 円</div>
-        <div>今月の合計: ${(month.monthTotal || 0).toLocaleString()} 円</div>
+        <div>今月の目標: ${Number(monthGoal||0).toLocaleString()} 円</div>
+        <div>今月の合計: ${Number(monthTotal||0).toLocaleString()} 円</div>
         <div>達成率: ${pct}%</div>
         <div>対象月: ${monthId}</div>
       </div>
@@ -99,31 +71,21 @@ async function buildMonthlyHtml(uid, monthId) {
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-    </body>
-    </html>
+    </body></html>
   `;
 }
 
-async function getSignedUrl(file) {
-  const [url] = await file.getSignedUrl({
-    action: "read",
-    expires: Date.now() + 60 * 60 * 1000, // 1h
-  });
-  return url;
-}
-
+// ---- 生成API（Storage 不使用 / base64 返却） ----
 exports.generateMonthlyPdf = onCall(async (request) => {
   const uid = request.auth?.uid;
   if (!uid) throw new HttpsError("unauthenticated", "ログインが必要です。");
 
-  const monthId = typeof request.data?.monthId === "string" ? request.data.monthId : null;
-  if (!monthId) throw new HttpsError("invalid-argument", "monthId が指定されていません。");
+  // フロント側で既に集計済みのデータをそのまま受け取る
+  const payload = request.data;
+  if (!payload?.monthId) throw new HttpsError("invalid-argument", "monthId がありません。");
 
   try {
-    // デフォルトバケットが取れているかログ（デバッグ用）
-    console.log("Using bucket:", defaultBucket);
-
-    const html = await buildMonthlyHtml(uid, monthId);
+    const html = buildMonthlyHtml(payload);
 
     const executablePath = await chromium.executablePath();
     process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
@@ -132,23 +94,18 @@ exports.generateMonthlyPdf = onCall(async (request) => {
       executablePath,
       headless: chromium.headless,
       defaultViewport: chromium.defaultViewport,
-      // ★ EFAULT対策でオプション増し
       args: [
         ...chromium.args,
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-gpu",
-        "--disable-dev-shm-usage",
-        "--single-process",
-        "--no-zygote",
+        "--no-sandbox", "--disable-setuid-sandbox",
+        "--disable-gpu", "--disable-dev-shm-usage",
+        "--single-process", "--no-zygote",
       ],
       ignoreHTTPSErrors: true,
     });
 
     const page = await browser.newPage();
-    // setContent より安定することがある
     const dataUrl = "data:text/html;charset=utf-8," + encodeURIComponent(html);
-    await page.goto(dataUrl, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
+    await page.goto(dataUrl, { waitUntil: ["load","domcontentloaded","networkidle0"] });
     await page.emulateMediaType("screen");
 
     const pdfBuffer = await page.pdf({
@@ -159,16 +116,9 @@ exports.generateMonthlyPdf = onCall(async (request) => {
 
     await browser.close();
 
-    const path = `reports/${uid}/${monthId}.pdf`;
-    const file = BUCKET.file(path);
-    await file.save(pdfBuffer, {
-      contentType: "application/pdf",
-      resumable: false,
-      metadata: { cacheControl: "private, max-age=0" },
-    });
-
-    const url = await getSignedUrl(file);
-    return { url, path };
+    const base64 = pdfBuffer.toString("base64");
+    const filename = `DailyGoalTracker_${payload.monthId}.pdf`;
+    return { base64, filename };
   } catch (err) {
     console.error("generateMonthlyPdf failed:", err);
     throw new HttpsError("internal", `PDF生成エラー: ${err?.message || String(err)}`);
