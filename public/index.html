@@ -15,7 +15,7 @@
   </style>
 </head>
 <body class="bg-stone-50 text-neutral-900 min-h-screen">
-  <main class="max-w-md mx-auto px-4 pb-28 pt-6">
+  <main class="max-w-md mx-auto px-4 pb-28 pt-6" id="appRoot">
     <header class="mb-4 flex items-center justify-between">
       <div>
         <h1 class="text-2xl font-bold tracking-tight">Daily Goal Tracker</h1>
@@ -110,9 +110,7 @@
           <p class="text-[11px] text-neutral-400 mt-1">クイック金額 × 個数で加算（既定=1）。チップで個数欄に反映。</p>
         </div>
 
-        <div id="quickBtns" class="grid grid-cols-3 gap-2">
-          <!-- 職種に応じて動的生成 -->
-        </div>
+        <div id="quickBtns" class="grid grid-cols-3 gap-2"></div>
       </section>
 
       <!-- 手動入力 -->
@@ -142,7 +140,7 @@
 
     <!-- ===== 月次ビュー ===== -->
     <section id="monthView" class="space-y-6 hidden">
-      <!-- 月目標設定（ここだけで設定＆変更可能） -->
+      <!-- 月目標設定 -->
       <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
         <h2 class="font-semibold mb-3">今月の目標金額</h2>
         <div class="flex gap-2">
@@ -175,6 +173,21 @@
         <p id="monthRemainingView" class="text-neutral-600 text-sm mt-2">目標未設定</p>
         <p id="monthLabel" class="text-neutral-500 text-xs mt-1"></p>
       </section>
+
+      <!-- 今月の履歴（日別）＋ リセット -->
+      <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
+        <div class="flex items-center justify-between mb-2">
+          <h2 class="font-semibold">今月の履歴</h2>
+          <button id="resetMonthBtn"
+                  class="rounded-lg px-3 py-2 bg-rose-300 hover:bg-rose-400 active:bg-rose-500 transition text-sm">
+            今月の合計をリセット（目標は残す）
+          </button>
+        </div>
+        <ul id="monthHistory" class="divide-y divide-stone-200">
+          <!-- 日別履歴が入る（例：10/15：¥9,200） -->
+        </ul>
+        <p id="historyEmpty" class="text-neutral-400 text-sm mt-2 hidden">今月の履歴がありません。</p>
+      </section>
     </section>
   </main>
 
@@ -183,7 +196,7 @@
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
     import {
       getFirestore, doc, getDoc, setDoc, serverTimestamp,
-      collection, getDocs, increment
+      collection, getDocs, increment, writeBatch
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
     // === Firebase設定 ===
@@ -263,7 +276,6 @@
       const ref = doc(db, "users", uid, "days", dayId());
       await setDoc(ref, { ...s, date: dayId(), updatedAt: serverTimestamp() }, { merge: true });
     }
-
     async function loadProfile(uid) {
       const ref = doc(db, "users", uid, "profile", "main");
       const snap = await getDoc(ref);
@@ -276,11 +288,18 @@
     }
 
     // Month doc
+    async function sumMonthDays(uid) {
+      const daysRef = collection(db, "users", uid, "days");
+      const all = await getDocs(daysRef);
+      let sum = 0;
+      all.forEach(d => { if (d.id.startsWith(monthId())) sum += (d.data().total ?? 0); });
+      return sum;
+    }
     async function loadMonth(uid) {
       const ref = doc(db, "users", uid, "months", monthId());
       const snap = await getDoc(ref);
       if (snap.exists()) return snap.data();
-      const sum = await sumMonthDays(uid); // 初回は日次合計から作成
+      const sum = await sumMonthDays(uid);
       const init = { monthGoal: 0, monthTotal: sum, updatedAt: serverTimestamp() };
       await setDoc(ref, init, { merge: true });
       return { monthGoal: 0, monthTotal: sum };
@@ -294,23 +313,79 @@
       const ref = doc(db, "users", uid, "months", monthId());
       await setDoc(ref, { monthTotal: increment(delta), updatedAt: serverTimestamp() }, { merge: true });
     }
-    async function sumMonthDays(uid) {
-      // 当月の日次ドキュメントを総和（リンクの担保）
-      const daysRef = collection(db, "users", uid, "days");
-      const all = await getDocs(daysRef);
-      let sum = 0;
-      all.forEach(d => {
-        if (d.id.startsWith(monthId())) {
-          sum += (d.data().total ?? 0);
-        }
-      });
-      return sum;
-    }
     async function recomputeMonthFromDays(uid) {
       const sum = await sumMonthDays(uid);
       const ref = doc(db, "users", uid, "months", monthId());
       await setDoc(ref, { monthTotal: sum, updatedAt: serverTimestamp() }, { merge: true });
       monthState.monthTotal = sum;
+    }
+
+    // 月履歴
+    async function loadMonthHistory(uid) {
+      if (!uid) {
+        // ローカル履歴
+        const list = [];
+        for (let i = 1; i <= 31; i++) {
+          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
+          const raw = localStorage.getItem(`DGT:${d}`);
+          if (raw) {
+            try {
+              const o = JSON.parse(raw);
+              list.push({ day: d, total: o.total ?? 0 });
+            } catch {}
+          }
+        }
+        return list.sort((a,b) => b.day.localeCompare(a.day));
+      }
+      // クラウド履歴
+      const daysRef = collection(db, "users", uid, "days");
+      const all = await getDocs(daysRef);
+      const list = [];
+      all.forEach(s => {
+        if (s.id.startsWith(monthId())) list.push({ day: s.id, total: s.data().total ?? 0 });
+      });
+      return list.sort((a,b) => b.day.localeCompare(a.day));
+    }
+
+    // 月リセット
+    async function resetMonthData(uid) {
+      if (uid) {
+        // クラウド：当月のdaysの total/amazonCount を0に、months.monthTotalも0
+        const daysRef = collection(db, "users", uid, "days");
+        const all = await getDocs(daysRef);
+        const batch = writeBatch(db);
+        all.forEach(s => {
+          if (s.id.startsWith(monthId())) {
+            batch.set(doc(db, "users", uid, "days", s.id), {
+              total: 0, amazonCount: 0, updatedAt: serverTimestamp()
+            }, { merge: true });
+          }
+        });
+        batch.set(doc(db, "users", uid, "months", monthId()), {
+          monthTotal: 0, updatedAt: serverTimestamp()
+        }, { merge: true });
+        await batch.commit();
+        monthState.monthTotal = 0;
+      } else {
+        // ローカル：当月キーを0化
+        for (let i = 1; i <= 31; i++) {
+          const d = `${monthId()}-${String(i).padStart(2,'0')}`;
+          const k = `DGT:${d}`;
+          const raw = localStorage.getItem(k);
+          if (raw) {
+            try {
+              const o = JSON.parse(raw);
+              o.total = 0; o.amazonCount = 0;
+              localStorage.setItem(k, JSON.stringify(o));
+            } catch {}
+          }
+        }
+        monthState = { ...monthState, monthTotal: 0 };
+        saveLocalMonth(monthState);
+      }
+      // 表示上も当日分を0に
+      state.total = 0; state.amazonCount = 0;
+      saveLocal(state);
     }
 
     // ===== State =====
@@ -324,11 +399,8 @@
     // ===== UI =====
     const THEME_APPLY = () => {
       const theme = THEME[profile.profession] || THEME.delivery;
-      // 日次バー
       document.getElementById('progressBar').className = `h-full ${theme.bar}`;
-      // 月次バー
       document.getElementById('monthProgressBar').className = `h-full ${theme.bar}`;
-      // 職種チップ強調
       document.querySelectorAll('#professionChips .chip').forEach(btn => {
         const active = btn.dataset.prof === profile.profession;
         btn.classList.toggle('ring-2', active);
@@ -353,12 +425,30 @@
           const delta = p.amount * q;
           state.total += delta;
           state.amazonCount = (state.amazonCount ?? 0) + q;
-          await persist(delta); // 月合計にdeltaを反映
+          await persist(delta);
         });
         box.appendChild(btn);
       });
-      // 配達員のみ数量UI表示
       document.getElementById('qtyArea').classList.toggle('hidden', profile.profession !== 'delivery');
+    }
+
+    function renderMonthHistory(list) {
+      const ul = document.getElementById('monthHistory');
+      const empty = document.getElementById('historyEmpty');
+      ul.innerHTML = '';
+      if (!list || list.length === 0) {
+        empty.classList.remove('hidden');
+        return;
+      }
+      empty.classList.add('hidden');
+      list.forEach(item => {
+        const li = document.createElement('li');
+        li.className = "py-2 flex items-center justify-between";
+        const d = item.day.slice(5); // MM-DD
+        li.innerHTML = `<span class="text-sm text-neutral-600">${d.replace('-', '/')}</span>
+                        <span class="text-sm font-semibold">${fmtJPY.format(item.total || 0)}</span>`;
+        ul.appendChild(li);
+      });
     }
 
     function updateDayUI() {
@@ -410,6 +500,11 @@
       }
     }
 
+    async function refreshMonthHistory() {
+      const list = await loadMonthHistory(currentUser?.uid);
+      renderMonthHistory(list);
+    }
+
     function updateAllUI() {
       THEME_APPLY();
       renderQuickButtons();
@@ -428,9 +523,7 @@
           await saveCloud(currentUser.uid, state);
           if (deltaForMonth) await incMonthTotal(currentUser.uid, deltaForMonth);
         } else {
-          // local day
           saveLocal(state);
-          // local month
           if (deltaForMonth) {
             monthState.monthTotal = (monthState.monthTotal ?? 0) + deltaForMonth;
             saveLocalMonth(monthState);
@@ -438,9 +531,9 @@
         }
       } catch (e) {
         console.warn('Persist warning:', e);
-        // months 書き込みが失敗しても、UIは更新する
       } finally {
         updateAllUI();
+        if (activeTab === 'month') await refreshMonthHistory();
       }
     }
 
@@ -456,13 +549,14 @@
     // ===== 初期描画 =====
     updateHeaderAuthUI();
     updateAllUI();
+    refreshMonthHistory();
 
     // ===== ハンドラ（日） =====
     document.getElementById('setGoalBtn').addEventListener('click', async () => {
       const v = parseInt(document.getElementById('goalInput').value, 10);
       state.goal = Number.isFinite(v) && v >= 0 ? v : 0;
       document.getElementById('goalInput').value = '';
-      await persist(0); // 月合計は変えない
+      await persist(0);
     });
 
     document.getElementById('fdAddBtn').addEventListener('click', async () => {
@@ -475,7 +569,7 @@
       const add = Math.floor(v);
       state.total += add;
       document.getElementById('fdInput').value = '';
-      await persist(add); // 月合計に加算（← 修正ポイント）
+      await persist(add);
     });
 
     document.getElementById('fdInput').addEventListener('keydown', (e) => {
@@ -485,7 +579,7 @@
     document.getElementById('resetBtn').addEventListener('click', async () => {
       if (!confirm('本日のデータをリセットします（※月合計は変えません）。')) return;
       state = { goal: 0, total: 0, amazonCount: 0 };
-      await persist(0); // 月合計は据え置き
+      await persist(0);
     });
 
     // 職種チップ
@@ -512,23 +606,45 @@
       e.target.value = qty;
     });
 
-    // ===== タブ切替 =====
+    // ===== タブ切替（ボタン） =====
     document.getElementById('tabDay').addEventListener('click', async () => {
-      activeTab = 'day';
-      updateAllUI();
+      activeTab = 'day'; updateAllUI();
     });
     document.getElementById('tabMonth').addEventListener('click', async () => {
       activeTab = 'month';
-      // 月次タブを開くたびに当月日次の総和で再同期（リンクの担保）
-      if (currentUser) {
-        try {
-          await recomputeMonthFromDays(currentUser.uid);
-        } catch (e) {
-          console.warn('Month recompute warning:', e);
-        }
-      }
+      if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch(e){ console.warn(e); } }
       updateAllUI();
+      await refreshMonthHistory();
     });
+
+    // ===== タブ切替（スワイプ） =====
+    (() => {
+      const root = document.getElementById('appRoot');
+      let x0 = null, y0 = null, t0 = 0;
+      const THRESH = 40; // px
+      root.addEventListener('touchstart', (e) => {
+        const t = e.touches[0];
+        x0 = t.clientX; y0 = t.clientY; t0 = Date.now();
+      }, {passive:true});
+      root.addEventListener('touchend', async (e) => {
+        if (x0 == null) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - x0;
+        const dy = Math.abs(t.clientY - y0);
+        const dt = Date.now() - t0;
+        x0 = y0 = null;
+        if (dy > 60) return;               // 縦スワイプ除外
+        if (Math.abs(dx) < THRESH) return; // しきい値
+        // 左→月次、右→日次
+        if (dx < 0) {
+          activeTab = 'month';
+          if (currentUser) { try { await recomputeMonthFromDays(currentUser.uid); } catch(e){} }
+          updateAllUI(); await refreshMonthHistory();
+        } else {
+          activeTab = 'day'; updateAllUI();
+        }
+      }, {passive:true});
+    })();
 
     // ===== 認証 =====
     document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -542,18 +658,11 @@
       currentUser = user || null;
       updateHeaderAuthUI();
       if (currentUser) {
-        // プロフィール
-        profile = await loadProfile(currentUser.uid) || { profession:'delivery' };
-        // 日次
+        const prof = await loadProfile(currentUser.uid); if (prof) profile = prof;
         const cloud = await loadCloud(currentUser.uid);
         if ((cloud.goal ?? 0) === 0 && (cloud.total ?? 0) === 0 && (cloud.amazonCount ?? 0) === 0) {
-          const local = loadLocal();
-          state = local;
-          await saveCloud(currentUser.uid, state);
-        } else {
-          state = cloud;
-        }
-        // 月次（保存値を取る）
+          const local = loadLocal(); state = local; await saveCloud(currentUser.uid, state);
+        } else { state = cloud; }
         monthState = await loadMonth(currentUser.uid);
       } else {
         profile = loadLocalProfile();
@@ -561,6 +670,7 @@
         monthState = loadLocalMonth();
       }
       updateAllUI();
+      await refreshMonthHistory();
     });
 
     // ===== 月次操作 =====
@@ -581,13 +691,28 @@
       }
     });
 
-    // 他タブ更新フォロー（未ログイン時）
-    window.addEventListener('visibilitychange', () => {
+    document.getElementById('resetMonthBtn').addEventListener('click', async () => {
+      if (!confirm('今月の合計をリセットします。目標は残ります。よろしいですか？')) return;
+      try {
+        await resetMonthData(currentUser?.uid);
+        if (currentUser) await recomputeMonthFromDays(currentUser.uid); // 念のため再同期
+      } catch (e) {
+        alert('リセット中にエラーが発生しました。通信状況を確認してください。');
+        console.warn(e);
+      } finally {
+        updateAllUI();
+        await refreshMonthHistory();
+      }
+    });
+
+    // ===== 他タブ更新フォロー（未ログイン時） =====
+    window.addEventListener('visibilitychange', async () => {
       if (document.visibilityState === 'visible' && !currentUser) {
         state = loadLocal();
         profile = loadLocalProfile();
         monthState = loadLocalMonth();
         updateAllUI();
+        await refreshMonthHistory();
       }
     });
   </script>
