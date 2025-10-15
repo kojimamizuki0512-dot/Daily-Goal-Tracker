@@ -142,7 +142,7 @@
 
     <!-- ===== 月次ビュー ===== -->
     <section id="monthView" class="space-y-6 hidden">
-      <!-- 月目標設定（※ここだけで設定可能） -->
+      <!-- 月目標設定（ここだけで設定＆変更可能） -->
       <section class="p-4 rounded-xl soft-card bg-white/80 border border-stone-200 shadow-sm">
         <h2 class="font-semibold mb-3">今月の目標金額</h2>
         <div class="flex gap-2">
@@ -186,7 +186,7 @@
       collection, getDocs, increment
     } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
 
-    // === あなたのFirebase設定（そのまま使用）===
+    // === Firebase設定 ===
     const firebaseConfig = {
       apiKey: "AIzaSyDwt4EL1tLDehbGvluSf3-SNRKfvbzjQaU",
       authDomain: "daily-goal-tracker-900c0.firebaseapp.com",
@@ -201,30 +201,18 @@
     const db = getFirestore(app);
     const provider = new GoogleAuthProvider();
 
-    // ===== テーマ色（職種ごと） =====
+    // ===== テーマ色 =====
     const THEME = {
       delivery: { bar: "bg-emerald-300", btn: "bg-emerald-300 hover:bg-emerald-400 active:bg-emerald-500" },
       writer:   { bar: "bg-sky-300",     btn: "bg-sky-300 hover:bg-sky-400 active:bg-sky-500" },
       creator:  { bar: "bg-violet-300",  btn: "bg-violet-300 hover:bg-violet-400 active:bg-violet-500" },
     };
 
-    // ===== プリセット（職種ごと） =====
+    // ===== プリセット =====
     const PRESETS = {
-      delivery: [
-        { label: "+137円", amount: 137 },
-        { label: "+500円", amount: 500 },
-        { label: "+1,000円", amount: 1000 },
-      ],
-      writer: [
-        { label: "+1,000円", amount: 1000 },
-        { label: "+3,000円", amount: 3000 },
-        { label: "+5,000円", amount: 5000 },
-      ],
-      creator: [
-        { label: "+5,000円", amount: 5000 },
-        { label: "+10,000円", amount: 10000 },
-        { label: "+500円", amount: 500 },
-      ],
+      delivery: [{ label: "+137円", amount: 137 }, { label: "+500円", amount: 500 }, { label: "+1,000円", amount: 1000 }],
+      writer:   [{ label: "+1,000円", amount: 1000 }, { label: "+3,000円", amount: 3000 }, { label: "+5,000円", amount: 5000 }],
+      creator:  [{ label: "+5,000円", amount: 5000 }, { label: "+10,000円", amount: 10000 }, { label: "+500円", amount: 500 }],
     };
 
     // ===== Local util =====
@@ -292,17 +280,7 @@
       const ref = doc(db, "users", uid, "months", monthId());
       const snap = await getDoc(ref);
       if (snap.exists()) return snap.data();
-      // 無ければ、その月の days を集計して作る（初回だけ）
-      let sum = 0;
-      const daysRef = collection(db, "users", uid, "days");
-      const all = await getDocs(daysRef);
-      all.forEach(d => {
-        const id = d.id; // "YYYY-MM-DD"
-        if (id.startsWith(monthId())) {
-          const data = d.data();
-          sum += (data.total ?? 0);
-        }
-      });
+      const sum = await sumMonthDays(uid); // 初回は日次合計から作成
       const init = { monthGoal: 0, monthTotal: sum, updatedAt: serverTimestamp() };
       await setDoc(ref, init, { merge: true });
       return { monthGoal: 0, monthTotal: sum };
@@ -315,6 +293,24 @@
       if (!delta) return;
       const ref = doc(db, "users", uid, "months", monthId());
       await setDoc(ref, { monthTotal: increment(delta), updatedAt: serverTimestamp() }, { merge: true });
+    }
+    async function sumMonthDays(uid) {
+      // 当月の日次ドキュメントを総和（リンクの担保）
+      const daysRef = collection(db, "users", uid, "days");
+      const all = await getDocs(daysRef);
+      let sum = 0;
+      all.forEach(d => {
+        if (d.id.startsWith(monthId())) {
+          sum += (d.data().total ?? 0);
+        }
+      });
+      return sum;
+    }
+    async function recomputeMonthFromDays(uid) {
+      const sum = await sumMonthDays(uid);
+      const ref = doc(db, "users", uid, "months", monthId());
+      await setDoc(ref, { monthTotal: sum, updatedAt: serverTimestamp() }, { merge: true });
+      monthState.monthTotal = sum;
     }
 
     // ===== State =====
@@ -356,7 +352,7 @@
           const q = Math.max(1, Math.min(100, qty));
           const delta = p.amount * q;
           state.total += delta;
-          state.amazonCount += q;
+          state.amazonCount = (state.amazonCount ?? 0) + q;
           await persist(delta); // 月合計にdeltaを反映
         });
         box.appendChild(btn);
@@ -381,23 +377,23 @@
         `あと ${fmtJPY.format(goal - total)}`;
 
       document.getElementById('dateView').textContent = `保存日：${dayId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
-      document.getElementById('quickCount').textContent = amazonCount;
+      document.getElementById('quickCount').textContent = amazonCount ?? 0;
     }
 
     function updateMonthUI() {
       const { monthGoal, monthTotal } = monthState;
       document.getElementById('monthGoalView').textContent = monthGoal > 0 ? `目標：${fmtJPY.format(monthGoal)}` : '未設定';
-      document.getElementById('monthTotalView').textContent = fmtJPY.format(monthTotal);
+      document.getElementById('monthTotalView').textContent = fmtJPY.format(monthTotal ?? 0);
 
       let percent = 0;
-      if (monthGoal > 0) percent = Math.min(100, Math.floor((monthTotal / monthGoal) * 100));
+      if ((monthGoal ?? 0) > 0) percent = Math.min(100, Math.floor(((monthTotal ?? 0) / monthGoal) * 100));
       document.getElementById('monthPercentView').textContent = `${percent}%`;
       document.getElementById('monthProgressBar').style.width = `${percent}%`;
 
       document.getElementById('monthRemainingView').textContent =
-        monthGoal <= 0 ? '目標未設定' :
-        monthTotal >= monthGoal ? `達成！ +${fmtJPY.format(monthTotal - monthGoal)}（超過）` :
-        `あと ${fmtJPY.format(monthGoal - monthTotal)}`;
+        (monthGoal ?? 0) <= 0 ? '目標未設定' :
+        (monthTotal ?? 0) >= (monthGoal ?? 0) ? `達成！ +${fmtJPY.format((monthTotal ?? 0) - (monthGoal ?? 0))}（超過）` :
+        `あと ${fmtJPY.format((monthGoal ?? 0) - (monthTotal ?? 0))}`;
 
       document.getElementById('monthLabel').textContent = `対象月：${monthId()}（${currentUser ? 'クラウド保存' : '端末保存'}）`;
     }
@@ -427,25 +423,34 @@
     }
 
     async function persist(deltaForMonth = 0) {
-      if (currentUser) {
-        await saveCloud(currentUser.uid, state);
-        if (deltaForMonth) await incMonthTotal(currentUser.uid, deltaForMonth);
-      } else {
-        // local day
-        saveLocal(state);
-        // local month
-        if (deltaForMonth) {
-          monthState.monthTotal = (monthState.monthTotal ?? 0) + deltaForMonth;
-          saveLocalMonth(monthState);
+      try {
+        if (currentUser) {
+          await saveCloud(currentUser.uid, state);
+          if (deltaForMonth) await incMonthTotal(currentUser.uid, deltaForMonth);
+        } else {
+          // local day
+          saveLocal(state);
+          // local month
+          if (deltaForMonth) {
+            monthState.monthTotal = (monthState.monthTotal ?? 0) + deltaForMonth;
+            saveLocalMonth(monthState);
+          }
         }
+      } catch (e) {
+        console.warn('Persist warning:', e);
+        // months 書き込みが失敗しても、UIは更新する
+      } finally {
+        updateAllUI();
       }
-      updateAllUI();
     }
 
     async function persistProfile() {
-      if (currentUser) await saveProfile(currentUser.uid, profile);
-      else saveLocalProfile(profile);
-      updateAllUI();
+      try {
+        if (currentUser) await saveProfile(currentUser.uid, profile);
+        else saveLocalProfile(profile);
+      } finally {
+        updateAllUI();
+      }
     }
 
     // ===== 初期描画 =====
@@ -467,9 +472,10 @@
         alert('0円より大きい数値を入力してください。');
         return;
       }
-      state.total += Math.floor(v);
+      const add = Math.floor(v);
+      state.total += add;
       document.getElementById('fdInput').value = '';
-      await persist(Math.floor(v)); // 月合計に加算
+      await persist(add); // 月合計に加算（← 修正ポイント）
     });
 
     document.getElementById('fdInput').addEventListener('keydown', (e) => {
@@ -507,8 +513,22 @@
     });
 
     // ===== タブ切替 =====
-    document.getElementById('tabDay').addEventListener('click', () => { activeTab = 'day'; updateAllUI(); });
-    document.getElementById('tabMonth').addEventListener('click', () => { activeTab = 'month'; updateAllUI(); });
+    document.getElementById('tabDay').addEventListener('click', async () => {
+      activeTab = 'day';
+      updateAllUI();
+    });
+    document.getElementById('tabMonth').addEventListener('click', async () => {
+      activeTab = 'month';
+      // 月次タブを開くたびに当月日次の総和で再同期（リンクの担保）
+      if (currentUser) {
+        try {
+          await recomputeMonthFromDays(currentUser.uid);
+        } catch (e) {
+          console.warn('Month recompute warning:', e);
+        }
+      }
+      updateAllUI();
+    });
 
     // ===== 認証 =====
     document.getElementById('loginBtn').addEventListener('click', async () => {
@@ -533,7 +553,7 @@
         } else {
           state = cloud;
         }
-        // 月次
+        // 月次（保存値を取る）
         monthState = await loadMonth(currentUser.uid);
       } else {
         profile = loadLocalProfile();
@@ -550,12 +570,15 @@
       const goal = Number.isFinite(v) && v >= 0 ? v : 0;
       monthState.monthGoal = goal;
       document.getElementById('monthGoalInput').value = '';
-      if (currentUser) {
-        await saveMonthGoal(currentUser.uid, goal);
-      } else {
-        saveLocalMonth(monthState);
+      try {
+        if (currentUser) {
+          await saveMonthGoal(currentUser.uid, goal);
+        } else {
+          saveLocalMonth(monthState);
+        }
+      } finally {
+        updateAllUI();
       }
-      updateAllUI();
     });
 
     // 他タブ更新フォロー（未ログイン時）
