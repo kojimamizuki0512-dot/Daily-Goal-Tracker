@@ -8,16 +8,26 @@ const { setGlobalOptions } = require("firebase-functions/v2");
 const chromium = require("@sparticuz/chromium");
 const puppeteer = require("puppeteer-core");
 
-admin.initializeApp();
+// ★ デフォルトバケットを明示（appspot.com を使う）
+const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+const defaultBucket = `${projectId}.appspot.com`;
+
+admin.initializeApp({
+  storageBucket: defaultBucket,
+});
 
 // リージョン/リソース（PDF用途で余裕めに）
 setGlobalOptions({
   region: "asia-northeast1",
   timeoutSeconds: 300,
-  memory: "1GiB", // 512MiB だと落ちやすい環境があります
+  memory: "1GiB",
 });
 
-const BUCKET = admin.storage().bucket(); // {projectId}.appspot.com
+const BUCKET = admin.storage().bucket();
+
+// Puppeteer の実行モードを環境に合わせて明示
+chromium.setHeadlessMode = true;
+chromium.setGraphicsMode = false;
 
 async function buildMonthlyHtml(uid, monthId) {
   const db = admin.firestore();
@@ -41,8 +51,7 @@ async function buildMonthlyHtml(uid, monthId) {
     <style>
       @page { size: A4; margin: 20mm 12mm; }
       body { font-family: -apple-system, BlinkMacSystemFont, "Noto Sans JP", "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; }
-      .wrap { padding: 0 0; }
-      h1 { font-size: 20px; margin: 0 0 12px; padding: 20px 12px 0; }
+      h1 { font-size: 20px; margin: 20px 12px 12px; }
       .muted { color:#555; font-size: 13px; line-height:1.6; padding: 0 12px; }
       hr { border: none; border-top: 1px solid #ddd; margin: 12px 0 16px; }
       table { width:100%; border-collapse: collapse; font-size:13px; }
@@ -68,36 +77,33 @@ async function buildMonthlyHtml(uid, monthId) {
     ? Math.floor((month.monthTotal || 0) / (month.monthGoal || 1) * 100)
     : 0;
 
-  const html = `
+  return `
     <!doctype html>
     <html lang="ja">
     <head><meta charset="utf-8">${style}</head>
     <body>
-      <div class="wrap">
-        <h1>Daily Goal Tracker 月次レポート（${monthId}）</h1>
-        <div class="muted">
-          <div>今月の目標: ${(month.monthGoal || 0).toLocaleString()} 円</div>
-          <div>今月の合計: ${(month.monthTotal || 0).toLocaleString()} 円</div>
-          <div>達成率: ${pct}%</div>
-          <div>対象月: ${monthId}</div>
-        </div>
-        <hr/>
-        <table>
-          <thead>
-            <tr>
-              <th>日付</th>
-              <th class="right">日目標(円)</th>
-              <th class="right">日合計(円)</th>
-              <th class="right">達成率(%)</th>
-            </tr>
-          </thead>
-          <tbody>${rowsHtml}</tbody>
-        </table>
+      <h1>Daily Goal Tracker 月次レポート（${monthId}）</h1>
+      <div class="muted">
+        <div>今月の目標: ${(month.monthGoal || 0).toLocaleString()} 円</div>
+        <div>今月の合計: ${(month.monthTotal || 0).toLocaleString()} 円</div>
+        <div>達成率: ${pct}%</div>
+        <div>対象月: ${monthId}</div>
       </div>
+      <hr/>
+      <table>
+        <thead>
+          <tr>
+            <th>日付</th>
+            <th class="right">日目標(円)</th>
+            <th class="right">日合計(円)</th>
+            <th class="right">達成率(%)</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
     </body>
     </html>
   `;
-  return html;
 }
 
 async function getSignedUrl(file) {
@@ -110,18 +116,18 @@ async function getSignedUrl(file) {
 
 exports.generateMonthlyPdf = onCall(async (request) => {
   const uid = request.auth?.uid;
-  if (!uid) {
-    throw new HttpsError("unauthenticated", "ログインが必要です。");
-  }
+  if (!uid) throw new HttpsError("unauthenticated", "ログインが必要です。");
+
   const monthId = typeof request.data?.monthId === "string" ? request.data.monthId : null;
-  if (!monthId) {
-    throw new HttpsError("invalid-argument", "monthId が指定されていません。");
-  }
+  if (!monthId) throw new HttpsError("invalid-argument", "monthId が指定されていません。");
 
   try {
     const html = await buildMonthlyHtml(uid, monthId);
 
     const executablePath = await chromium.executablePath();
+    // 念のため環境変数でも指定
+    process.env.PUPPETEER_EXECUTABLE_PATH = executablePath;
+
     const browser = await puppeteer.launch({
       args: [...chromium.args, "--no-sandbox", "--disable-setuid-sandbox"],
       defaultViewport: chromium.defaultViewport,
@@ -138,6 +144,7 @@ exports.generateMonthlyPdf = onCall(async (request) => {
       printBackground: true,
       margin: { top: "20mm", right: "12mm", bottom: "20mm", left: "12mm" },
     });
+
     await browser.close();
 
     const path = `reports/${uid}/${monthId}.pdf`;
@@ -145,16 +152,13 @@ exports.generateMonthlyPdf = onCall(async (request) => {
     await file.save(pdfBuffer, {
       contentType: "application/pdf",
       resumable: false,
-      metadata: { cacheControl: "private, max-age:0" },
+      metadata: { cacheControl: "private, max-age=0" },
     });
 
     const url = await getSignedUrl(file);
     return { url, path };
   } catch (err) {
     console.error("generateMonthlyPdf failed:", err);
-    throw new HttpsError(
-      "internal",
-      `PDF生成でエラーが発生しました: ${err?.message || String(err)}`
-    );
+    throw new HttpsError("internal", `PDF生成エラー: ${err?.message || String(err)}`);
   }
 });
