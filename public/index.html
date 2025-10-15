@@ -793,11 +793,13 @@
         if (!url) throw new Error('URL not returned');
         // 新規タブで開く
         window.open(url, '_blank');
+      // 旧：alert('PDF生成に失敗しました。少し時間をおいて再度お試しください。');
       } catch (e) {
         console.error(e);
-        alert('PDF生成に失敗しました。少し時間をおいて再度お試しください。');
+        const msg = e?.message || e?.code || "PDF生成に失敗しました。";
+        alert(msg);
       }
-    });
+});
 
     // ===== 他タブ更新フォロー（未ログイン時） =====
     window.addEventListener('visibilitychange', async () => {
